@@ -107,11 +107,10 @@ export default function ListaEmpleados() {
           </Link>
         </header>
 
-        {/* BUSCADOR */}
         <div className="relative mb-6">
           <input 
             type="text" 
-            placeholder="Buscar por nombre o cargo..." 
+            placeholder="Buscar..." 
             className="w-full p-4 pl-12 rounded-[22px] border-none shadow-sm text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
             onChange={(e) => setBusqueda(e.target.value)}
           />
@@ -160,7 +159,6 @@ export default function ListaEmpleados() {
                     </div>
                   </div>
 
-                  {/* BOTÓN DE MARCACIÓN */}
                   <div className="pt-2 border-t border-gray-50">
                     {turnoCompletado ? (
                       <div className="w-full py-2 bg-green-50 text-green-600 rounded-xl text-[9px] font-black uppercase text-center italic">
@@ -185,7 +183,6 @@ export default function ListaEmpleados() {
           </div>
         )}
 
-        {/* MODAL DE CONFIRMACIÓN LIMPIO */}
         {confirmarEliminar && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-200">
             <div className="bg-white rounded-[45px] p-8 w-full max-w-sm text-center shadow-2xl border border-gray-100">
@@ -197,7 +194,7 @@ export default function ListaEmpleados() {
               <div className="flex flex-col gap-3">
                 <button 
                   onClick={borrarEmpleado} 
-                  className="w-full py-5 bg-red-600 text-white rounded-[22px] font-black uppercase transition-transform active:scale-95"
+                  className="w-full py-5 bg-red-600 text-white rounded-[22px] font-black uppercase transition-transform active:scale-95 shadow-lg shadow-red-100"
                 >
                   Confirmar
                 </button>
