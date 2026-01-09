@@ -17,12 +17,12 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={`${inter.className} bg-gray-50 text-black`}>
-        {/* Contenedor con espacio inferior para el Navbar */}
-        <div className="min-h-screen pb-24 relative">
+        {/* Contenedor principal con espacio para el menú inferior */}
+        <main className="min-h-screen pb-24 relative">
           {children}
-        </div>
-        
-        {/* Componente de navegación inferior */}
+        </main>
+
+        {/* Barra de navegación inferior */}
         <Navbar />
       </body>
     </html>
