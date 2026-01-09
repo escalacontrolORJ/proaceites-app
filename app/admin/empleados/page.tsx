@@ -49,10 +49,11 @@ export default function ListaEmpleados() {
     setEstadosAsistencia(estados)
   }
 
+  // FUNCIÓN CORREGIDA SIN DUPLICADOS
   const registrarMarcacion = async (empleado: any, modo: 'ingreso' | 'salida') => {
     const ahora = new Date()
-    const hoyISO = ahora.toISOString() // Para fecha_hora (timestamptz)
-    const soloFecha = hoyISO.split('T')[0] // Para columna fecha (date)
+    const hoyISO = ahora.toISOString() 
+    const soloFecha = hoyISO.split('T')[0]
 
     const { error } = await supabase
       .from('asistencia')
@@ -67,7 +68,6 @@ export default function ListaEmpleados() {
     if (error) {
       alert("Error al registrar: " + error.message)
     } else {
-      // Refrescamos los estados para que el botón cambie inmediatamente
       fetchEstadosAsistencia(empleados)
     }
   }
@@ -109,7 +109,6 @@ export default function ListaEmpleados() {
           </Link>
         </header>
 
-        {/* BUSCADOR */}
         <div className="relative mb-6">
           <input 
             type="text" 
@@ -186,10 +185,9 @@ export default function ListaEmpleados() {
           </div>
         )}
 
-        {/* MODAL DE CONFIRMACIÓN */}
         {confirmarEliminar && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-200">
-            <div className="bg-white rounded-[45px] p-8 w-full max-w-sm text-center shadow-2xl border border-gray-100">
+            <div className="bg-white rounded-[45px] p-8 w-full max-sm text-center shadow-2xl border border-gray-100">
               <div className="text-5xl mb-4">🚫</div>
               <h2 className="text-xl font-black uppercase text-gray-900 mb-2 leading-none">Eliminar</h2>
               <p className="text-[11px] text-gray-500 mb-8 px-4 leading-relaxed">
