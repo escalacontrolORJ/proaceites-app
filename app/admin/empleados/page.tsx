@@ -107,10 +107,11 @@ export default function ListaEmpleados() {
           </Link>
         </header>
 
+        {/* BUSCADOR CORREGIDO */}
         <div className="relative mb-6">
           <input 
             type="text" 
-            placeholder="Buscar..." 
+            placeholder="Buscar por nombre o cargo..." 
             className="w-full p-4 pl-12 rounded-[22px] border-none shadow-sm text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
             onChange={(e) => setBusqueda(e.target.value)}
           />
@@ -130,7 +131,7 @@ export default function ListaEmpleados() {
               const turnoCompletado = ultimoReg && ultimoReg.tipo_registro === 'salida'
 
               return (
-                <div key={emp.id} className="bg-white p-4 rounded-[30px] shadow-sm border border-gray-100 flex flex-col gap-4 transition-all">
+                <div key={emp.id} className="bg-white p-4 rounded-[30px] shadow-sm border border-gray-100 flex flex-col gap-4 transition-all active:scale-[0.99]">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4 min-w-0">
                       <div className="w-10 h-10 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-700 font-black text-xs uppercase flex-shrink-0">
@@ -183,6 +184,7 @@ export default function ListaEmpleados() {
           </div>
         )}
 
+        {/* MODAL DE CONFIRMACIÓN LIMPIO Y ANIMADO */}
         {confirmarEliminar && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-200">
             <div className="bg-white rounded-[45px] p-8 w-full max-w-sm text-center shadow-2xl border border-gray-100">
