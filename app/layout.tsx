@@ -17,12 +17,9 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={`${inter.className} bg-gray-50 text-black`}>
-        {/* Contenedor principal para las páginas */}
         <main className="min-h-screen pb-24 relative">
           {children}
         </main>
-
-        {/* Barra de navegación inferior fija */}
         <Navbar />
       </body>
     </html>
