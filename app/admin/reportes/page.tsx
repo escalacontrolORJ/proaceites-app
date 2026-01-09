@@ -25,7 +25,7 @@ export default function ReporteAsistencia() {
   async function cargarDatosIniciales() {
     setLoading(true)
     
-    // 1. Cargar lista de empleados para el selector (Combo Box)
+    // 1. Cargar lista de empleados para el selector
     const { data: dataEmp } = await supabase
       .from('empleados')
       .select('nombres')
@@ -49,7 +49,14 @@ export default function ReporteAsistencia() {
     setLoading(false)
   }
 
-  // FUNCIÓN PARA CALCULAR HORAS TRABAJADAS
+  // Función para limpiar filtros y ver todo
+  const verTodo = () => {
+    setFiltroNombre('')
+    setFechaDesde('')
+    setFechaHasta('')
+    cargarDatosIniciales()
+  }
+
   const calcularHoras = (entrada: string, salida: string) => {
     if (!entrada || !salida) return '0.0'
     try {
@@ -61,11 +68,16 @@ export default function ReporteAsistencia() {
     } catch (e) { return '0.0' }
   }
 
-  // LÓGICA DE FILTRADO COMBINADA
+  // LÓGICA DE FILTRADO CON LIMPIEZA DE TEXTO (TRIM)
   const registrosFiltrados = registros.filter(r => {
-    const coincideNombre = filtroNombre === '' || r.nombres === filtroNombre
+    // Normalizamos los nombres eliminando espacios accidentales al inicio/final
+    const nombreEnRegistro = (r.nombres || "").trim().toLowerCase()
+    const nombreEnFiltro = (filtroNombre || "").trim().toLowerCase()
+
+    const coincideNombre = filtroNombre === '' || nombreEnRegistro === nombreEnFiltro
     const coincideDesde = fechaDesde ? r.fecha >= fechaDesde : true
     const coincideHasta = fechaHasta ? r.fecha <= fechaHasta : true
+    
     return coincideNombre && coincideDesde && coincideHasta
   })
 
@@ -77,44 +89,31 @@ export default function ReporteAsistencia() {
       Entrada: r.hora_entrada,
       Salida: r.hora_salida || 'Pendiente',
       Horas: calcularHoras(r.hora_entrada, r.hora_salida),
-      Ubicacion_E: r.entrada_gps,
-      Ubicacion_S: r.salida_gps || 'N/A'
+      GPS_E: r.entrada_gps,
+      GPS_S: r.salida_gps
     }))
     const ws = XLSX.utils.json_to_sheet(dataExcel)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Reporte_Asistencia")
+    XLSX.utils.book_append_sheet(wb, ws, "Reporte")
     XLSX.writeFile(wb, `Reporte_Proaceites_${new Date().toISOString().slice(0,10)}.xlsx`)
   }
 
   // EXPORTACIÓN A PDF
   const exportPDF = () => {
     const doc = new jsPDF()
-    doc.setFontSize(16)
     doc.text("PROACEITES - REPORTE DE ASISTENCIA", 14, 20)
-    
     const tableData = registrosFiltrados.map(r => [
-      r.nombres, 
-      r.fecha, 
-      r.hora_entrada, 
-      r.hora_salida || '--:--', 
-      calcularHoras(r.hora_entrada, r.hora_salida)
+      r.nombres, r.fecha, r.hora_entrada, r.hora_salida || '--', calcularHoras(r.hora_entrada, r.hora_salida)
     ])
-
     // @ts-ignore
-    doc.autoTable({
-      head: [['Empleado', 'Fecha', 'Entrada', 'Salida', 'Hrs']],
-      body: tableData,
-      startY: 30,
-      theme: 'grid',
-      headStyles: { fillColor: [30, 58, 138] }
-    })
-    doc.save("Reporte_Asistencia_Proaceites.pdf")
+    doc.autoTable({ head: [['Empleado', 'Fecha', 'Entrada', 'Salida', 'Hrs']], body: tableData, startY: 30 })
+    doc.save("Reporte_Asistencia.pdf")
   }
 
   return (
     <div className="min-h-screen bg-gray-100 pb-24 text-black font-sans">
       
-      {/* NAVEGACIÓN SUPERIOR (Tabs) */}
+      {/* NAVEGACIÓN SUPERIOR FIXED */}
       <nav className="bg-white border-b sticky top-0 z-50 px-4 py-3 shadow-md">
         <div className="max-w-4xl mx-auto flex gap-3">
           <Link href="/admin/reportes" className={`flex-1 text-center py-3 rounded-2xl text-[10px] font-black uppercase transition-all ${pathname === '/admin/reportes' ? 'bg-blue-900 text-white shadow-lg shadow-blue-200' : 'bg-gray-100 text-gray-400'}`}>
@@ -128,28 +127,27 @@ export default function ReporteAsistencia() {
 
       <div className="max-w-4xl mx-auto p-4 pt-6">
         
-        {/* ENCABEZADO */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div>
             <h1 className="text-3xl font-black text-blue-900 uppercase tracking-tighter leading-none">Auditoría GPS</h1>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Sincronizado con Base de Datos</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1 italic">Gestión Administrativa</p>
           </div>
           <div className="flex gap-2 w-full md:w-auto">
-            <button onClick={exportPDF} className="flex-1 md:flex-none px-6 py-3 bg-white border border-red-100 text-red-600 rounded-2xl text-[10px] font-black uppercase shadow-sm active:scale-95 transition-all">PDF</button>
-            <button onClick={exportExcel} className="flex-1 md:flex-none px-6 py-3 bg-blue-900 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-all">Excel</button>
+            <button onClick={exportPDF} className="flex-1 md:flex-none px-6 py-3 bg-white border border-red-100 text-red-600 rounded-2xl text-[10px] font-black uppercase shadow-sm">PDF</button>
+            <button onClick={exportExcel} className="flex-1 md:flex-none px-6 py-3 bg-blue-900 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg">Excel</button>
           </div>
         </header>
 
-        {/* PANEL DE FILTROS (Cargado desde Empleados) */}
+        {/* FILTROS */}
         <div className="bg-white p-6 rounded-[35px] shadow-sm border border-gray-100 mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="text-[9px] font-black text-gray-400 uppercase ml-2 mb-1 block">Filtrar Empleado</label>
+            <label className="text-[9px] font-black text-gray-400 uppercase ml-2 mb-1 block">Seleccionar Empleado</label>
             <select 
               className="w-full p-3 bg-gray-50 rounded-xl border-none text-sm font-bold outline-none ring-1 ring-gray-100"
               value={filtroNombre}
               onChange={(e) => setFiltroNombre(e.target.value)}
             >
-              <option value="">TODOS LOS EMPLEADOS</option>
+              <option value="">MOSTRAR TODOS</option>
               {empleados.map((emp, idx) => (
                 <option key={idx} value={emp.nombres}>{emp.nombres}</option>
               ))}
@@ -165,71 +163,63 @@ export default function ReporteAsistencia() {
           </div>
         </div>
 
-        {/* LISTADO DE RESULTADOS */}
+        {/* RESULTADOS */}
         {loading ? (
-          <div className="text-center py-20 font-black text-gray-200 uppercase animate-pulse tracking-widest text-sm">Cargando marcaciones...</div>
+          <div className="text-center py-20 font-black text-gray-300 uppercase animate-pulse">Sincronizando...</div>
         ) : registrosFiltrados.length === 0 ? (
-          <div className="bg-white p-20 rounded-[40px] text-center border-2 border-dashed border-gray-100 shadow-inner">
-            <p className="text-[10px] font-black text-gray-300 uppercase italic mb-4">No se encontraron registros para esta selección</p>
-            <button onClick={()=>{setFiltroNombre(''); setFechaDesde(''); setFechaHasta('')}} className="px-6 py-3 bg-blue-50 text-blue-700 rounded-2xl font-black text-[10px] uppercase shadow-sm">Ver Todo el Historial</button>
+          <div className="bg-white p-20 rounded-[40px] text-center border-2 border-dashed border-gray-100">
+            <p className="text-[10px] font-black text-gray-400 uppercase mb-4">No hay marcaciones para esta búsqueda</p>
+            <button 
+              onClick={verTodo}
+              className="px-6 py-3 bg-blue-900 text-white rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-blue-100"
+            >
+              Ver Todo el Historial
+            </button>
           </div>
         ) : (
           <div className="grid gap-6">
             {registrosFiltrados.map((reg) => (
-              <div key={reg.id} className="bg-white rounded-[40px] p-6 shadow-sm border border-gray-100 hover:shadow-xl hover:shadow-blue-900/5 transition-all">
-                {/* Cabecera del Item */}
-                <div className="flex justify-between items-center mb-6 px-1">
+              <div key={reg.id} className="bg-white rounded-[40px] p-6 shadow-sm border border-gray-50">
+                <div className="flex justify-between items-center mb-6">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-blue-900 text-white rounded-2xl flex items-center justify-center font-black text-sm shadow-lg shadow-blue-100">
+                    <div className="w-12 h-12 bg-blue-900 text-white rounded-2xl flex items-center justify-center font-black text-sm shadow-lg">
                       {reg.nombres?.substring(0,2).toUpperCase()}
                     </div>
                     <div>
                       <h3 className="font-black text-blue-900 uppercase text-[13px] leading-none">{reg.nombres}</h3>
-                      <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase tracking-tighter italic">{reg.fecha}</p>
+                      <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase italic tracking-tighter">{reg.fecha}</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="bg-blue-50 px-4 py-1.5 rounded-full">
-                      <span className="text-sm font-black text-blue-700">{calcularHoras(reg.hora_entrada, reg.hora_salida)}</span>
-                      <span className="text-[8px] font-black text-blue-400 uppercase ml-1">Horas</span>
-                    </div>
+                    <span className="block text-xl font-black text-blue-700 leading-none">{calcularHoras(reg.hora_entrada, reg.hora_salida)}</span>
+                    <span className="text-[7px] font-black text-gray-300 uppercase">Horas</span>
                   </div>
                 </div>
 
-                {/* Grid de Fotos y Mapas */}
                 <div className="grid grid-cols-2 gap-4">
                   {/* ENTRADA */}
                   <div className="space-y-2">
-                    <div className="flex justify-between items-center px-2">
-                      <span className="text-[8px] font-black text-blue-500 uppercase tracking-widest">Entrada</span>
-                      <span className="text-[10px] font-black text-gray-800">{reg.hora_entrada}</span>
-                    </div>
-                    <a href={`https://www.google.com/maps?q=${reg.entrada_gps}`} target="_blank" rel="noreferrer" className="block relative group rounded-[30px] overflow-hidden border-2 border-gray-50 shadow-inner">
-                      <img src={reg.entrada_foto} className="w-full h-44 object-cover group-hover:scale-110 transition-transform duration-500" alt="Entrada" />
-                      <div className="absolute inset-0 bg-blue-900/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
-                        <span className="bg-white text-black text-[9px] font-black px-4 py-2 rounded-full uppercase shadow-2xl">📍 GPS Entrada</span>
-                      </div>
+                    <p className="text-[8px] font-black text-blue-500 uppercase px-2 flex justify-between">
+                      <span>ENTRADA</span>
+                      <span>{reg.hora_entrada}</span>
+                    </p>
+                    <a href={`https://www.google.com/maps?q=${reg.entrada_gps}`} target="_blank" rel="noreferrer" className="block relative rounded-[30px] overflow-hidden border shadow-inner">
+                      <img src={reg.entrada_foto} className="w-full h-44 object-cover" alt="E" />
                     </a>
                   </div>
 
                   {/* SALIDA */}
                   <div className="space-y-2">
-                    <div className="flex justify-between items-center px-2">
-                      <span className="text-[8px] font-black text-orange-500 uppercase tracking-widest">Salida</span>
-                      <span className="text-[10px] font-black text-gray-800">{reg.hora_salida || '--:--'}</span>
-                    </div>
+                    <p className="text-[8px] font-black text-orange-500 uppercase px-2 flex justify-between">
+                      <span>SALIDA</span>
+                      <span>{reg.hora_salida || '--:--'}</span>
+                    </p>
                     {reg.salida_foto ? (
-                      <a href={`https://www.google.com/maps?q=${reg.salida_gps}`} target="_blank" rel="noreferrer" className="block relative group rounded-[30px] overflow-hidden border-2 border-gray-50 shadow-inner">
-                        <img src={reg.salida_foto} className="w-full h-44 object-cover group-hover:scale-110 transition-transform duration-500" alt="Salida" />
-                        <div className="absolute inset-0 bg-orange-900/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
-                          <span className="bg-white text-black text-[9px] font-black px-4 py-2 rounded-full uppercase shadow-2xl">📍 GPS Salida</span>
-                        </div>
+                      <a href={`https://www.google.com/maps?q=${reg.salida_gps}`} target="_blank" rel="noreferrer" className="block relative rounded-[30px] overflow-hidden border shadow-inner">
+                        <img src={reg.salida_foto} className="w-full h-44 object-cover" alt="S" />
                       </a>
                     ) : (
-                      <div className="w-full h-44 bg-gray-50 rounded-[30px] border-2 border-dashed border-gray-100 flex flex-col items-center justify-center text-gray-300">
-                        <div className="animate-pulse text-2xl mb-1">⏳</div>
-                        <span className="text-[8px] font-black uppercase">Turno Abierto</span>
-                      </div>
+                      <div className="w-full h-44 bg-gray-50 rounded-[30px] border-2 border-dashed border-gray-100 flex items-center justify-center text-[8px] font-black text-gray-300 uppercase italic">Pendiente</div>
                     )}
                   </div>
                 </div>
