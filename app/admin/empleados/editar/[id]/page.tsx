@@ -9,43 +9,29 @@ export default function EditarEmpleado() {
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   
-  // Lista de usuarios que se han registrado en la Auth de Supabase
-  const [usuariosSistema, setUsuariosSistema] = useState<any[]>([])
-  
   const [form, setForm] = useState({
-    nombre: '',
+    nombres: '', // Corregido a plural
     cedula: '',
-    rol_empresa: 'Operario',
-    user_id: '' // Este es el ID que vincula con auth.users
+    rol_empresa: 'Operario'
   })
 
   useEffect(() => {
-    fetchDatos()
+    fetchEmpleado()
   }, [id])
 
-  async function fetchDatos() {
+  async function fetchEmpleado() {
     setLoading(true)
-    
-    // 1. Obtener datos del empleado
-    const { data: empData } = await supabase
+    const { data, error } = await supabase
       .from('empleados')
       .select('*')
       .eq('id', id)
       .single()
 
-    // 2. Obtener lista de usuarios registrados (desde una tabla de perfiles o similar)
-    // Nota: Usamos la tabla 'empleados' misma para buscar usuarios que ya se loguearon
-    const { data: usersData } = await supabase
-      .from('empleados')
-      .select('id, nombre')
-      .not('id', 'eq', id) // Evitar duplicados
-
-    if (empData) {
+    if (data) {
       setForm({
-        nombre: empData.nombre || '',
-        cedula: empData.cedula || '',
-        rol_empresa: empData.rol_empresa || 'Operario',
-        user_id: empData.id // En tu sistema, el ID del empleado suele ser el mismo UUID de Auth
+        nombres: data.nombres || '',
+        cedula: data.cedula || '',
+        rol_empresa: data.rol_empresa || 'Operario'
       })
     }
     setLoading(false)
@@ -58,7 +44,7 @@ export default function EditarEmpleado() {
     const { error } = await supabase
       .from('empleados')
       .update({
-        nombre: form.nombre,
+        nombres: form.nombres, // Enviamos como 'nombres'
         cedula: form.cedula,
         rol_empresa: form.rol_empresa,
       })
@@ -67,15 +53,15 @@ export default function EditarEmpleado() {
     if (error) {
       alert("Error al actualizar: " + error.message)
     } else {
-      alert("✅ Empleado actualizado correctamente")
+      alert("✅ Datos actualizados correctamente")
       router.push('/admin/empleados')
     }
     setUpdating(false)
   }
 
   if (loading) return (
-    <div className="flex items-center justify-center min-h-screen font-black text-gray-400 uppercase">
-      Cargando perfil...
+    <div className="flex items-center justify-center min-h-screen font-black text-gray-400 uppercase text-xs tracking-widest">
+      Cargando Datos...
     </div>
   )
 
@@ -84,38 +70,39 @@ export default function EditarEmpleado() {
       <div className="max-w-md mx-auto">
         <header className="mb-8 pt-4">
           <h1 className="text-2xl font-black text-blue-900 uppercase tracking-tighter">Editar Perfil</h1>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">ID vinculada: {id.toString().slice(0,8)}...</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">ID: {id.toString().slice(0,12)}...</p>
         </header>
 
         <form onSubmit={guardarCambios} className="space-y-4">
-          {/* Nombre */}
+          {/* NOMBRES */}
           <div className="bg-white p-4 rounded-[25px] shadow-sm border border-gray-100">
-            <label className="text-[10px] font-black text-blue-400 uppercase ml-2 mb-1 block">Nombre Completo</label>
+            <label className="text-[10px] font-black text-blue-400 uppercase ml-2 mb-1 block">Nombres y Apellidos</label>
             <input 
               type="text"
               required
               className="w-full p-2 bg-transparent font-bold text-gray-800 outline-none"
-              value={form.nombre}
-              onChange={e => setForm({...form, nombre: e.target.value})}
+              value={form.nombres}
+              onChange={e => setForm({...form, nombres: e.target.value})}
             />
           </div>
 
-          {/* Cédula */}
+          {/* CÉDULA */}
           <div className="bg-white p-4 rounded-[25px] shadow-sm border border-gray-100">
-            <label className="text-[10px] font-black text-blue-400 uppercase ml-2 mb-1 block">Número de Cédula</label>
+            <label className="text-[10px] font-black text-blue-400 uppercase ml-2 mb-1 block">Cédula / ID</label>
             <input 
               type="text"
+              required
               className="w-full p-2 bg-transparent font-bold text-gray-800 outline-none"
               value={form.cedula}
               onChange={e => setForm({...form, cedula: e.target.value})}
             />
           </div>
 
-          {/* Rol de Empresa */}
+          {/* ROL */}
           <div className="bg-white p-4 rounded-[25px] shadow-sm border border-gray-100">
-            <label className="text-[10px] font-black text-blue-400 uppercase ml-2 mb-1 block">Rol del Usuario</label>
+            <label className="text-[10px] font-black text-blue-400 uppercase ml-2 mb-1 block">Rol Asignado</label>
             <select 
-              className="w-full p-2 bg-transparent font-bold text-blue-900 outline-none appearance-none"
+              className="w-full p-2 bg-transparent font-black text-blue-900 outline-none appearance-none"
               value={form.rol_empresa}
               onChange={e => setForm({...form, rol_empresa: e.target.value})}
             >
@@ -139,7 +126,7 @@ export default function EditarEmpleado() {
               onClick={() => router.back()}
               className="w-full py-4 text-gray-400 font-bold uppercase text-xs"
             >
-              Cancelar y Volver
+              Cancelar
             </button>
           </div>
         </form>
