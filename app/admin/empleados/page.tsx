@@ -50,8 +50,9 @@ export default function ListaEmpleados() {
   }
 
   const registrarMarcacion = async (empleado: any, modo: 'ingreso' | 'salida') => {
-    const hoy = new Date().toISOString()
-    const soloFecha = hoy.split('T')[0]
+    const ahora = new Date()
+    const hoyISO = ahora.toISOString() // Para fecha_hora (timestamptz)
+    const soloFecha = hoyISO.split('T')[0] // Para columna fecha (date)
 
     const { error } = await supabase
       .from('asistencia')
@@ -59,13 +60,14 @@ export default function ListaEmpleados() {
         empleado_id: empleado.id,
         nombres: empleado.nombres,
         tipo_registro: modo,
-        fecha_hora: hoy,
+        fecha_hora: hoyISO,
         fecha: soloFecha
       }])
 
     if (error) {
       alert("Error al registrar: " + error.message)
     } else {
+      // Refrescamos los estados para que el botón cambie inmediatamente
       fetchEstadosAsistencia(empleados)
     }
   }
@@ -107,7 +109,7 @@ export default function ListaEmpleados() {
           </Link>
         </header>
 
-        {/* BUSCADOR CORREGIDO */}
+        {/* BUSCADOR */}
         <div className="relative mb-6">
           <input 
             type="text" 
@@ -168,10 +170,10 @@ export default function ListaEmpleados() {
                     ) : (
                       <button
                         onClick={() => registrarMarcacion(emp, debeMarcarSalida ? 'salida' : 'ingreso')}
-                        className={`w-full py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${
+                        className={`w-full py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg ${
                           debeMarcarSalida 
-                          ? 'bg-orange-500 text-white shadow-lg shadow-orange-100' 
-                          : 'bg-blue-600 text-white shadow-lg shadow-blue-100'
+                          ? 'bg-orange-500 text-white shadow-orange-100' 
+                          : 'bg-blue-600 text-white shadow-blue-100'
                         }`}
                       >
                         {debeMarcarSalida ? '🔔 Marcar Salida' : '⚡ Marcar Ingreso'}
@@ -184,7 +186,7 @@ export default function ListaEmpleados() {
           </div>
         )}
 
-        {/* MODAL DE CONFIRMACIÓN LIMPIO Y ANIMADO */}
+        {/* MODAL DE CONFIRMACIÓN */}
         {confirmarEliminar && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-200">
             <div className="bg-white rounded-[45px] p-8 w-full max-w-sm text-center shadow-2xl border border-gray-100">
