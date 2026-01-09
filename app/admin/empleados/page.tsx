@@ -20,7 +20,7 @@ export default function ListaEmpleados() {
       .from('empleados')
       .select('*')
       .order('nombres', { ascending: true })
-    
+
     if (error) {
       console.error("Error al traer empleados:", error.message)
     } else {
@@ -43,7 +43,7 @@ export default function ListaEmpleados() {
         .order('fecha_hora', { ascending: false })
         .limit(1)
         .maybeSingle()
-      
+
       estados[emp.id] = data || null
     }
     setEstadosAsistencia(estados)
@@ -87,8 +87,8 @@ export default function ListaEmpleados() {
   }
 
   const filtrados = empleados.filter(e => 
-    e.nombres?.toLowerCase().includes(busqueda.toLowerCase()) ||
-    e.rol_empresa?.toLowerCase().includes(busqueda.toLowerCase())
+    (e.nombres?.toLowerCase() || '').includes(busqueda.toLowerCase()) ||
+    (e.rol_empresa?.toLowerCase() || '').includes(busqueda.toLowerCase())
   )
 
   return (
@@ -121,7 +121,7 @@ export default function ListaEmpleados() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 opacity-20">
             <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="font-black text-[10px] uppercase tracking-widest text-center">Sincronizando...</p>
+            <p className="font-black text-[10px] uppercase tracking-widest text-center">Cargando...</p>
           </div>
         ) : (
           <div className="grid gap-3">
@@ -131,7 +131,7 @@ export default function ListaEmpleados() {
               const turnoCompletado = ultimoReg && ultimoReg.tipo_registro === 'salida'
 
               return (
-                <div key={emp.id} className="bg-white p-4 rounded-[30px] shadow-sm border border-gray-100 flex flex-col gap-4 transition-all active:scale-[0.99]">
+                <div key={emp.id} className="bg-white p-4 rounded-[30px] shadow-sm border border-gray-100 flex flex-col gap-4 transition-all">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4 min-w-0">
                       <div className="w-10 h-10 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-700 font-black text-xs uppercase flex-shrink-0">
@@ -141,11 +141,7 @@ export default function ListaEmpleados() {
                         <h2 className="font-black text-[11px] uppercase text-gray-800 leading-tight truncate">
                           {emp.nombres || 'Sin Nombre'}
                         </h2>
-                        <span className={`text-[7px] font-black px-2 py-0.5 rounded-md uppercase tracking-tighter ${
-                          emp.rol_empresa === 'Supervisor' ? 'bg-purple-100 text-purple-600' :
-                          emp.rol_empresa === 'Vendedor' ? 'bg-orange-100 text-orange-600' : 
-                          'bg-gray-100 text-gray-400'
-                        }`}>
+                        <span className="text-[7px] font-black px-2 py-0.5 bg-gray-100 text-gray-400 rounded-md uppercase tracking-tighter">
                           {emp.rol_empresa}
                         </span>
                       </div>
