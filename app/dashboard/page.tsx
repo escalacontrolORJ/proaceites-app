@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import Image from 'next/image'
 
@@ -9,6 +9,10 @@ export default function DashboardAsistencia() {
   const [enTrabajo, setEnTrabajo] = useState(false)
   const [user, setUser] = useState<any>(null)
   const [horaIngreso, setHoraIngreso] = useState<string | null>(null)
+  const [mostrarAlerta, setMostrarAlerta] = useState(false)
+  
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -16,106 +20,119 @@ export default function DashboardAsistencia() {
       setUser(data?.user)
     }
     fetchUser()
+    iniciarCamara()
 
     if (typeof window !== "undefined" && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => setUbicacion({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => alert("Por favor, activa el GPS para poder registrar tu asistencia."),
+        () => alert("Activa el GPS"),
         { enableHighAccuracy: true }
       )
     }
   }, [])
 
-  const manejarRegistro = async (tipo: 'ingreso' | 'salida') => {
-    if (!ubicacion) return alert("Esperando señal de GPS... Asegúrate de estar en un lugar abierto.")
-    
-    // Validación de 9 horas para salida
-    if (tipo === 'salida' && horaIngreso) {
-      const ahora = new Date()
-      const ingreso = new Date(horaIngreso)
-      const diffMs = ahora.getTime() - ingreso.getTime()
-      const diffHoras = diffMs / (1000 * 60 * 60)
+  const iniciarCamara = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+      if (videoRef.current) videoRef.current.srcObject = stream
+    } catch (err) {
+      console.error("Error camara:", err)
+    }
+  }
 
-      if (diffHoras < 9) {
-        const confirmar = confirm("Aún no completas las 9 horas de labor. ¿Deseas registrar la salida de todos modos?")
-        if (!confirmar) return
+  const capturarFoto = () => {
+    if (canvasRef.current && videoRef.current) {
+      const context = canvasRef.current.getContext('2d')
+      canvasRef.current.width = videoRef.current.videoWidth
+      canvasRef.current.height = videoRef.current.videoHeight
+      context?.drawImage(videoRef.current, 0, 0)
+      return canvasRef.current.toDataURL('image/jpeg', 0.5)
+    }
+    return null
+  }
+
+  const validarYRegistrar = () => {
+    if (enTrabajo && horaIngreso) {
+      const horas = (new Date().getTime() - new Date(horaIngreso).getTime()) / (1000 * 60 * 60)
+      if (horas < 9) {
+        setMostrarAlerta(true) // Activa el mensaje grande y negrita
+        return
       }
     }
+    ejecutarRegistro(enTrabajo ? 'salida' : 'ingreso')
+  }
 
+  const ejecutarRegistro = async (tipo: 'ingreso' | 'salida') => {
+    setMostrarAlerta(false)
     setLoading(true)
+    const fotoBase64 = capturarFoto()
 
     const { error } = await supabase.from('asistencia').insert([{
       empleado_id: user?.id,
       empleado_email: user?.email,
       tipo_registro: tipo,
-      ubicacion: `Lat: ${ubicacion.lat}, Lng: ${ubicacion.lng}`,
+      ubicacion: `${ubicacion?.lat}, ${ubicacion?.lng}`,
+      foto: fotoBase64,
       fecha_hora: new Date().toISOString()
     }])
 
-    if (error) {
-      alert("Error al registrar: " + error.message)
-    } else {
+    if (!error) {
       setEnTrabajo(tipo === 'ingreso')
       if (tipo === 'ingreso') setHoraIngreso(new Date().toISOString())
-      alert(`${tipo.toUpperCase()} registrado con éxito.`)
+      alert("REGISTRO EXITOSO")
     }
     setLoading(false)
   }
 
   return (
-    <div className="h-[100dvh] bg-gray-50 flex flex-col items-center justify-between p-6 text-black overflow-hidden font-sans">
+    <div className="h-[100dvh] bg-gray-100 flex flex-col items-center justify-between p-6 text-black relative overflow-hidden">
       
-      {/* SECCIÓN SUPERIOR: Logo y Usuario */}
-      <div className="flex flex-col items-center mt-2 w-full">
-        <div className="bg-white p-4 rounded-2xl shadow-sm mb-2">
-          <Image src="/logo.JPG" alt="Proaceites Logo" width={80} height={80} priority />
-        </div>
-        <h1 className="text-2xl font-black text-blue-900 uppercase tracking-tighter">Proaceites</h1>
-        <div className="bg-blue-100 px-3 py-1 rounded-full mt-1">
-          <p className="text-[10px] font-bold text-blue-700 uppercase">{user?.email || 'Cargando usuario...'}</p>
-        </div>
+      {/* HEADER */}
+      <div className="flex flex-col items-center mt-2">
+        <Image src="/logo.JPG" alt="Logo" width={70} height={70} className="rounded-2xl" />
+        <h1 className="text-2xl font-black text-blue-900 mt-2">PROACEITES</h1>
       </div>
 
-      {/* SECCIÓN CENTRAL: Estado Visual */}
-      <div className="w-full max-w-xs">
-        <div className={`p-8 rounded-[40px] shadow-xl text-center border-2 ${enTrabajo ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-          <p className="text-xs font-bold text-gray-400 uppercase mb-1 italic">Estado de jornada</p>
-          <p className={`text-3xl font-black tracking-tight ${enTrabajo ? 'text-green-600' : 'text-red-600'}`}>
-            {enTrabajo ? 'EN LABOR' : 'FUERA DE LABOR'}
-          </p>
-          {enTrabajo && (
-            <p className="text-[10px] mt-2 text-green-700 font-medium">Marcado desde las: {new Date(horaIngreso!).toLocaleTimeString()}</p>
-          )}
-        </div>
+      {/* CÁMARA */}
+      <div className="w-56 h-56 border-4 border-white shadow-2xl rounded-full overflow-hidden bg-black">
+        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+        <canvas ref={canvasRef} className="hidden" />
       </div>
 
-      {/* SECCIÓN INFERIOR: Botón de Acción (Mobile Ready) */}
-      <div className="w-full max-w-xs mb-6">
-        <button 
-          onClick={() => manejarRegistro(enTrabajo ? 'salida' : 'ingreso')}
-          disabled={loading}
-          className={`w-full py-7 rounded-[30px] font-black text-2xl shadow-2xl transition-all transform active:scale-95
-            ${enTrabajo 
-              ? 'bg-red-600 text-white border-b-[8px] border-red-800' 
-              : 'bg-green-600 text-white border-b-[8px] border-green-800'
-            } disabled:bg-gray-400 disabled:border-none`}
-        >
-          {loading ? (
-            <span className="flex items-center justify-center gap-2">
-              <svg className="animate-spin h-6 w-6 text-white" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              REGISTRANDO...
-            </span>
-          ) : (
-            enTrabajo ? 'MARCAR SALIDA' : 'MARCAR INGRESO'
-          )}
-        </button>
-        <p className="text-center text-[9px] text-gray-400 mt-6 leading-tight uppercase font-bold tracking-widest">
-          Sistema de Control de Asistencia <br/> Proaceites v1.0
-        </p>
-      </div>
+      {/* BOTÓN REGISTRO */}
+      <button 
+        onClick={validarYRegistrar}
+        className={`w-full max-w-xs py-8 rounded-[35px] font-black text-2xl shadow-xl 
+        ${enTrabajo ? 'bg-red-600 border-b-8 border-red-800' : 'bg-green-600 border-b-8 border-green-800'} text-white`}
+      >
+        {loading ? 'CARGANDO...' : (enTrabajo ? 'MARCAR SALIDA' : 'MARCAR INGRESO')}
+      </button>
+
+      {/* MODAL DE ADVERTENCIA (MENSAJE GRANDE Y NEGRITA) */}
+      {mostrarAlerta && (
+        <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-6 z-50">
+          <div className="bg-white rounded-[40px] p-8 text-center shadow-2xl animate-in zoom-in duration-300">
+            <div className="text-red-600 mb-4">⚠️</div>
+            <h2 className="text-2xl font-black text-gray-900 leading-tight mb-6">
+              AUN NO CUMPLES TU DIA COMPLETO DE TRABAJO, ¿AUN ASI VAS A REGISTRAR TU SALIDA?
+            </h2>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={() => ejecutarRegistro('salida')}
+                className="w-full py-4 bg-red-600 text-white rounded-2xl font-bold text-lg"
+              >
+                SI, REGISTRAR SALIDA
+              </button>
+              <button 
+                onClick={() => setMostrarAlerta(false)}
+                className="w-full py-4 bg-gray-200 text-gray-800 rounded-2xl font-bold"
+              >
+                NO, VOLVER
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
