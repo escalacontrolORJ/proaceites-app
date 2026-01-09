@@ -51,7 +51,7 @@ export default function ListaEmpleados() {
 
   const registrarMarcacion = async (empleado: any, modo: 'ingreso' | 'salida') => {
     const ahora = new Date()
-    const hoyISO = ahora.toISOString() 
+    const hoyISO = ahora.toISOString()
     const soloFecha = hoyISO.split('T')[0]
 
     const { error } = await supabase
@@ -86,6 +86,7 @@ export default function ListaEmpleados() {
     }
   }
 
+  // Filtro corregido para evitar errores con valores null o undefined
   const filtrados = empleados.filter(e => 
     (e.nombres?.toLowerCase() || '').includes(busqueda.toLowerCase()) ||
     (e.rol_empresa?.toLowerCase() || '').includes(busqueda.toLowerCase())
@@ -142,7 +143,7 @@ export default function ListaEmpleados() {
                           {emp.nombres || 'Sin Nombre'}
                         </h2>
                         <span className="text-[7px] font-black px-2 py-0.5 bg-gray-100 text-gray-400 rounded-md uppercase tracking-tighter">
-                          {emp.rol_empresa}
+                          {emp.rol_empresa || 'Sin Rol'}
                         </span>
                       </div>
                     </div>
