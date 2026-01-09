@@ -1,98 +1,152 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../../../lib/supabaseClient'
 import Link from 'next/link'
 
-export default function RegistroEmpleados() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [nombres, setNombres] = useState('')
-  const [rol, setRol] = useState('Operario')
-  const [fechaNac, setFechaNac] = useState('')
-  const [mensaje, setMensaje] = useState({ tipo: '', texto: '' })
+export default function ListaEmpleados() {
+  const [empleados, setEmpleados] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [confirmarEliminar, setConfirmarEliminar] = useState<any>(null)
+  const [busqueda, setBusqueda] = useState('')
 
-  const registrarTodo = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setMensaje({ tipo: 'info', texto: 'Procesando registro...' })
+  useEffect(() => {
+    fetchEmpleados()
+  }, [])
 
-    // 1. Crear usuario en Auth
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-    })
+  async function fetchEmpleados() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('empleados')
+      .select('*')
+      .order('nombre', { ascending: true })
+    
+    if (error) console.error(error)
+    else setEmpleados(data || [])
+    setLoading(false)
+  }
 
-    if (authError) {
-      setMensaje({ tipo: 'error', texto: "Error: " + authError.message })
-      return
-    }
+  const borrarEmpleado = async () => {
+    if (!confirmarEliminar) return
+    
+    const { error } = await supabase
+      .from('empleados')
+      .delete()
+      .eq('id', confirmarEliminar.id)
 
-    if (authData.user) {
-      // 2. Crear registro en tabla empleados
-      const { error: dbError } = await supabase.from('empleados').insert([{
-        id: authData.user.id,
-        nombres,
-        rol_empresa: rol,
-        fecha_nacimiento: fechaNac
-      }])
-
-      if (dbError) {
-        setMensaje({ tipo: 'error', texto: "Error en DB: " + dbError.message })
-      } else {
-        setMensaje({ tipo: 'success', texto: "✅ Empleado creado y vinculado correctamente" })
-        // Limpiar formulario
-        setEmail(''); setPassword(''); setNombres(''); setFechaNac('')
-      }
+    if (error) {
+      alert("Error al eliminar: " + error.message)
+    } else {
+      setEmpleados(empleados.filter(e => e.id !== confirmarEliminar.id))
+      setConfirmarEliminar(null)
     }
   }
 
+  const filtrados = empleados.filter(e => 
+    e.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
+    e.rol_empresa?.toLowerCase().includes(busqueda.toLowerCase())
+  )
+
   return (
-    <div className="min-h-screen bg-gray-50 p-4 font-sans text-black">
-      <div className="max-w-md mx-auto bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
-        <h1 className="text-2xl font-black text-blue-900 mb-2 uppercase tracking-tighter">Gestión de Personal</h1>
-        <p className="text-gray-500 text-sm mb-6 font-medium">Crear nuevo acceso y perfil de empleado</p>
+    <div className="min-h-screen bg-gray-50 p-4 pb-24 text-black font-sans">
+      <div className="max-w-md mx-auto pt-6">
+        <header className="mb-6">
+          <h1 className="text-2xl font-black text-blue-900 uppercase tracking-tighter">Gestión de Personal</h1>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Control de Usuarios Proaceites</p>
+        </header>
 
-        <form onSubmit={registrarTodo} className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Datos Personales</label>
-            <input type="text" placeholder="Nombres Completos" className="w-full p-4 bg-gray-50 rounded-2xl border-none ring-1 ring-gray-200 focus:ring-2 focus:ring-blue-500 outline-none" 
-              value={nombres} onChange={e => setNombres(e.target.value)} required />
-            <input type="date" className="w-full p-4 bg-gray-50 rounded-2xl border-none ring-1 ring-gray-200 outline-none" 
-              value={fechaNac} onChange={e => setFechaNac(e.target.value)} required />
+        {/* Buscador de Empleados */}
+        <div className="relative mb-6">
+          <input 
+            type="text" 
+            placeholder="Buscar por nombre o rol..." 
+            className="w-full p-4 pl-12 rounded-[22px] border-none shadow-sm text-sm bg-white"
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+          <span className="absolute left-4 top-4 opacity-30 text-lg">🔍</span>
+        </div>
+
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 opacity-20">
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="font-black text-[10px] uppercase">Sincronizando Nómina...</p>
           </div>
+        ) : (
+          <div className="grid gap-3">
+            {filtrados.map((emp) => (
+              <div key={emp.id} className="bg-white p-5 rounded-[30px] shadow-sm border border-gray-100 flex items-center justify-between transition-all active:scale-[0.98]">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-black text-xs uppercase">
+                    {emp.nombre ? emp.nombre.substring(0, 2) : '??'}
+                  </div>
+                  <div>
+                    <h2 className="font-black text-sm uppercase text-gray-800 leading-tight">
+                      {emp.nombre || 'Sin Nombre'}
+                    </h2>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`text-[8px] font-black px-2 py-0.5 rounded-md uppercase ${
+                        emp.rol_empresa === 'Supervisor' ? 'bg-purple-100 text-purple-600' :
+                        emp.rol_empresa === 'Vendedor' ? 'bg-orange-100 text-orange-600' : 
+                        'bg-gray-100 text-gray-500'
+                      }`}>
+                        {emp.rol_empresa}
+                      </span>
+                      <span className="text-[9px] font-mono text-gray-300">ID: {emp.id.slice(0, 5)}</span>
+                    </div>
+                  </div>
+                </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Rol en Proaceites</label>
-            <select className="w-full p-4 bg-gray-50 rounded-2xl border-none ring-1 ring-gray-200 outline-none font-bold text-blue-800"
-              value={rol} onChange={e => setRol(e.target.value)}>
-              <option value="Operario">Operario</option>
-              <option value="Supervisor">Supervisor</option>
-              <option value="Vendedor">Vendedor</option>
-              <option value="Varios">Varios</option>
-            </select>
-          </div>
-
-          <div className="space-y-1 pt-2">
-            <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Credenciales de Acceso</label>
-            <input type="email" placeholder="Correo institucional" className="w-full p-4 bg-gray-50 rounded-2xl border-none ring-1 ring-gray-200 outline-none" 
-              value={email} onChange={e => setEmail(e.target.value)} required />
-            <input type="password" placeholder="Contraseña (mín. 6 caracteres)" className="w-full p-4 bg-gray-50 rounded-2xl border-none ring-1 ring-gray-200 outline-none" 
-              value={password} onChange={e => setPassword(e.target.value)} required />
-          </div>
-
-          <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-200 active:scale-95 transition-all mt-4 uppercase">
-            Registrar Empleado
-          </button>
-        </form>
-
-        {mensaje.texto && (
-          <div className={`mt-6 p-4 rounded-2xl text-center font-bold text-sm ${mensaje.tipo === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-            {mensaje.texto}
+                <div className="flex gap-1">
+                  <Link 
+                    href={`/admin/empleados/editar/${emp.id}`} 
+                    className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center hover:bg-blue-600 hover:text-white transition-colors"
+                  >
+                    ✏️
+                  </Link>
+                  <button 
+                    onClick={() => setConfirmarEliminar(emp)}
+                    className="w-9 h-9 bg-red-50 text-red-600 rounded-xl flex items-center justify-center hover:bg-red-600 hover:text-white transition-colors"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
-        
-        <Link href="/admin/reportes" className="block text-center mt-6 text-blue-600 font-bold text-xs underline">
-          Ir a Reportes de Asistencia →
-        </Link>
+
+        {/* Modal de Confirmación de Baja */}
+        {confirmarEliminar && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in">
+            <div className="bg-white rounded-[45px] p-8 w-full max-w-sm text-center shadow-2xl">
+              <div className="text-5xl mb-4">🚫</div>
+              <h2 className="text-xl font-black uppercase text-gray-900 mb-2">Dar de Baja</h2>
+              <p className="text-xs text-gray-500 mb-8 px-4 leading-relaxed">
+                ¿Estás seguro de eliminar a <span className="font-bold text-black">{confirmarEliminar.nombre}</span>? Perderá acceso inmediato a la aplicación.
+              </p>
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={borrarEmpleado} 
+                  className="w-full py-5 bg-red-600 text-white rounded-[20px] font-black uppercase shadow-lg shadow-red-100 active:scale-95 transition-transform"
+                >
+                  Confirmar Eliminación
+                </button>
+                <button 
+                  onClick={() => setConfirmarEliminar(null)} 
+                  className="w-full py-4 bg-gray-50 text-gray-400 rounded-[20px] font-black uppercase active:scale-95 transition-transform"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {filtrados.length === 0 && !loading && (
+          <div className="text-center py-20 opacity-30">
+            <p className="text-4xl mb-4">👥</p>
+            <p className="text-[10px] font-black uppercase tracking-widest">No hay personal registrado</p>
+          </div>
+        )}
       </div>
     </div>
   )
