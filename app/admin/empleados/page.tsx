@@ -189,15 +189,15 @@ export default function ListaEmpleados() {
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
             <div className="bg-white rounded-[45px] p-8 w-full max-w-sm text-center shadow-2xl">
               <div className="text-5xl mb-4">🚫</div>
-              <h2 className="text-xl font-black uppercase text-gray-900 mb-2">Eliminar</h2>
-              <p className="text-[11px] text-gray-500 mb-8 px-4">
+              <h2 className="text-xl font-black uppercase text-gray-900 mb-2 leading-none">Eliminar</h2>
+              <p className="text-[11px] text-gray-500 mb-8 px-4 leading-relaxed">
                 ¿Eliminar a <span className="font-bold text-black">{confirmarEliminar.nombres}</span>?
               </p>
               <div className="flex flex-col gap-3">
-                <button onClick={borrarEmpleado} className="w-full py-5 bg-red-600 text-white rounded-[22px] font-black uppercase">
+                <button onClick={borrarEmpleado} className="w-full py-5 bg-red-600 text-white rounded-[22px] font-black uppercase transition-transform active:scale-95">
                   Confirmar
                 </button>
-                <button onClick={() => setConfirmarEliminar(null)} className="w-full py-4 bg-gray-50 text-gray-400 rounded-[22px] font-black uppercase">
+                <button onClick={() => setConfirmarEliminar(null)} className="w-full py-4 bg-gray-50 text-gray-400 rounded-[22px] font-black uppercase transition-transform active:scale-95">
                   Cancelar
                 </button>
               </div>
