@@ -5,8 +5,10 @@ import { jsPDF } from 'jspdf'
 import 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 export default function ReporteAsistencia() {
+  const pathname = usePathname()
   const [registros, setRegistros] = useState<any[]>([])
   const [listaNombres, setListaNombres] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,16 +31,17 @@ export default function ReporteAsistencia() {
       .order('hora_entrada', { ascending: false })
     
     if (error) {
-      console.error("Error:", error.message)
+      console.error("Error cargando datos:", error.message)
     } else {
       setRegistros(data || [])
-      // Crear lista única de nombres para el Combo Box
+      // Extraer nombres únicos para el Combo Box de filtrado
       const nombresUnicos = Array.from(new Set((data || []).map(r => r.nombres))).filter(Boolean) as string[]
       setListaNombres(nombresUnicos.sort())
     }
     setLoading(false)
   }
 
+  // CÁLCULO DE HORAS
   const calcularHoras = (entrada: string, salida: string) => {
     if (!entrada || !salida) return '0.0'
     try {
@@ -58,47 +61,60 @@ export default function ReporteAsistencia() {
     return coincideNombre && coincideDesde && coincideHasta
   })
 
-  // EXPORTACIONES
+  // EXPORTAR EXCEL
   const exportExcel = () => {
     const dataExcel = registrosFiltrados.map(r => ({
       Empleado: r.nombres, Fecha: r.fecha, Entrada: r.hora_entrada, Salida: r.hora_salida || 'Pendiente', Horas: calcularHoras(r.hora_entrada, r.hora_salida)
     }))
     const ws = XLSX.utils.json_to_sheet(dataExcel)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Asistencia")
+    XLSX.utils.book_append_sheet(wb, ws, "Reporte")
     XLSX.writeFile(wb, `Reporte_Proaceites_${new Date().toISOString().slice(0,10)}.xlsx`)
   }
 
+  // EXPORTAR PDF
   const exportPDF = () => {
     const doc = new jsPDF()
+    doc.setFontSize(16)
     doc.text("PROACEITES - REPORTE DE ASISTENCIA", 14, 20)
-    const tableData = registrosFiltrados.map(r => [r.nombres, r.fecha, r.hora_entrada, r.hora_salida || '--', calcularHoras(r.hora_entrada, r.hora_salida)])
+    const tableData = registrosFiltrados.map(r => [
+      r.nombres, r.fecha, r.hora_entrada, r.hora_salida || '--', calcularHoras(r.hora_entrada, r.hora_salida)
+    ])
     // @ts-ignore
-    doc.autoTable({ head: [['Empleado', 'Fecha', 'Entrada', 'Salida', 'Hrs']], body: tableData, startY: 30 })
+    doc.autoTable({ head: [['Empleado', 'Fecha', 'Entrada', 'Salida', 'Hrs']], body: tableData, startY: 30, theme: 'grid' })
     doc.save("Reporte_Asistencia.pdf")
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 pb-24 text-black font-sans">
-      <div className="max-w-4xl mx-auto pt-6">
+    <div className="min-h-screen bg-gray-50 pb-24 text-black font-sans">
+      
+      {/* NAVEGACIÓN PRINCIPAL (Para no perder la opción de Empleados) */}
+      <nav className="bg-white border-b sticky top-0 z-50 px-4 py-3 shadow-sm">
+        <div className="max-w-4xl mx-auto flex gap-3">
+          <Link href="/admin/reportes" className={`flex-1 text-center py-3 rounded-2xl text-[10px] font-black uppercase transition-all ${pathname === '/admin/reportes' ? 'bg-blue-900 text-white shadow-lg shadow-blue-100' : 'bg-gray-100 text-gray-400'}`}>
+            📊 Reportes
+          </Link>
+          <Link href="/admin/empleados" className={`flex-1 text-center py-3 rounded-2xl text-[10px] font-black uppercase transition-all ${pathname === '/admin/empleados' ? 'bg-blue-900 text-white shadow-lg shadow-blue-100' : 'bg-gray-100 text-gray-400'}`}>
+            👥 Personal
+          </Link>
+        </div>
+      </nav>
+
+      <div className="max-w-4xl mx-auto p-4 pt-6">
         
-        {/* HEADER CON ACCESO A EMPLEADOS */}
+        {/* HEADER */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div>
-            <h1 className="text-3xl font-black text-blue-900 uppercase tracking-tighter leading-none">Reportes</h1>
-            <div className="flex gap-3 mt-2">
-              <Link href="/admin/empleados" className="text-[10px] font-black bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg uppercase hover:bg-blue-700 hover:text-white transition-all">
-                👥 Gestionar Personal
-              </Link>
-            </div>
+            <h1 className="text-3xl font-black text-blue-900 uppercase tracking-tighter leading-none">Auditoría GPS</h1>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Registros de Entrada y Salida</p>
           </div>
           <div className="flex gap-2 w-full md:w-auto">
-            <button onClick={exportPDF} className="flex-1 md:flex-none px-6 py-3 bg-white border border-red-100 text-red-600 rounded-2xl text-[10px] font-black uppercase shadow-sm">PDF</button>
-            <button onClick={exportExcel} className="flex-1 md:flex-none px-6 py-3 bg-blue-900 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg">Excel</button>
+            <button onClick={exportPDF} className="flex-1 md:flex-none px-5 py-3 bg-white border border-red-100 text-red-600 rounded-2xl text-[10px] font-black uppercase">PDF</button>
+            <button onClick={exportExcel} className="flex-1 md:flex-none px-5 py-3 bg-blue-900 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg">Excel</button>
           </div>
         </header>
 
-        {/* PANEL DE FILTROS (COMBO BOX) */}
+        {/* PANEL DE FILTROS */}
         <div className="bg-white p-6 rounded-[35px] shadow-sm border border-gray-100 mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="text-[9px] font-black text-gray-400 uppercase ml-2 mb-1 block">Empleado</label>
@@ -121,57 +137,58 @@ export default function ReporteAsistencia() {
           </div>
         </div>
 
-        {/* LISTADO DE RESULTADOS */}
+        {/* RESULTADOS */}
         {loading ? (
-          <div className="text-center py-20 font-black text-gray-200 uppercase animate-pulse">Buscando registros...</div>
+          <div className="text-center py-20 font-black text-gray-200 uppercase animate-pulse">Sincronizando registros...</div>
         ) : registrosFiltrados.length === 0 ? (
           <div className="bg-white p-20 rounded-[40px] text-center border-2 border-dashed border-gray-100">
-            <span className="text-4xl block mb-2">🔍</span>
-            <p className="text-[10px] font-black text-gray-400 uppercase">No hay registros para este filtro</p>
+            <p className="text-[10px] font-black text-gray-400 uppercase italic">No se encontraron marcaciones</p>
             <button onClick={()=>{setFiltroNombre(''); setFechaDesde(''); setFechaHasta('')}} className="mt-4 text-blue-600 font-black text-[10px] uppercase underline">Ver todo el historial</button>
           </div>
         ) : (
           <div className="grid gap-6">
             {registrosFiltrados.map((reg) => (
-              <div key={reg.id} className="bg-white rounded-[40px] p-6 shadow-sm border border-gray-100 transition-all">
+              <div key={reg.id} className="bg-white rounded-[40px] p-6 shadow-sm border border-gray-100">
                 <div className="flex justify-between items-center mb-6">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-700 font-black uppercase text-sm">{reg.nombres?.substring(0,2)}</div>
+                    <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-700 font-black text-xs uppercase">
+                      {reg.nombres?.substring(0,2)}
+                    </div>
                     <div>
                       <h3 className="font-black text-blue-900 uppercase text-xs leading-none">{reg.nombres}</h3>
-                      <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase italic">{reg.fecha}</p>
+                      <p className="text-[9px] text-gray-400 font-bold mt-1 uppercase italic">{reg.fecha}</p>
                     </div>
                   </div>
                   <div className="text-right">
                     <span className="block text-lg font-black text-blue-600 leading-none">{calcularHoras(reg.hora_entrada, reg.hora_salida)}</span>
-                    <span className="text-[8px] font-black text-gray-300 uppercase">Horas Totales</span>
+                    <span className="text-[7px] font-black text-gray-300 uppercase tracking-widest">Horas Trabajadas</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   {/* ENTRADA */}
-                  <div className="space-y-2">
-                    <p className="text-[9px] font-black text-blue-400 uppercase text-center">Entrada {reg.hora_entrada}</p>
-                    <a href={`https://www.google.com/maps?q=${reg.entrada_gps}`} target="_blank" className="block relative rounded-[25px] overflow-hidden">
-                      <img src={reg.entrada_foto} className="w-full h-40 object-cover" alt="Entrada" />
-                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <span className="bg-white text-[8px] font-black px-3 py-1 rounded-full uppercase">📍 Ver Mapa</span>
+                  <div className="space-y-2 text-center">
+                    <span className="text-[8px] font-black text-blue-400 uppercase">Entrada {reg.hora_entrada}</span>
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${reg.entrada_gps}`} target="_blank" rel="noreferrer" className="block relative group rounded-[25px] overflow-hidden border">
+                      <img src={reg.entrada_foto} className="w-full h-40 object-cover" alt="E" />
+                      <div className="absolute inset-0 bg-blue-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
+                        <span className="text-white font-black text-[9px] uppercase">📍 GPS ENTRADA</span>
                       </div>
                     </a>
                   </div>
 
                   {/* SALIDA */}
-                  <div className="space-y-2">
-                    <p className="text-[9px] font-black text-orange-400 uppercase text-center">Salida {reg.hora_salida || '--:--'}</p>
+                  <div className="space-y-2 text-center">
+                    <span className="text-[8px] font-black text-orange-400 uppercase">Salida {reg.hora_salida || '--:--'}</span>
                     {reg.salida_foto ? (
-                      <a href={`https://www.google.com/maps?q=${reg.salida_gps}`} target="_blank" className="block relative rounded-[25px] overflow-hidden">
-                        <img src={reg.salida_foto} className="w-full h-40 object-cover" alt="Salida" />
-                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                          <span className="bg-white text-[8px] font-black px-3 py-1 rounded-full uppercase">📍 Ver Mapa</span>
+                      <a href={`https://www.google.com/maps/search/?api=1&query=${reg.salida_gps}`} target="_blank" rel="noreferrer" className="block relative group rounded-[25px] overflow-hidden border">
+                        <img src={reg.salida_foto} className="w-full h-40 object-cover" alt="S" />
+                        <div className="absolute inset-0 bg-orange-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
+                          <span className="text-white font-black text-[9px] uppercase">📍 GPS SALIDA</span>
                         </div>
                       </a>
                     ) : (
-                      <div className="w-full h-40 bg-gray-50 rounded-[25px] border-2 border-dashed border-gray-100 flex items-center justify-center text-[8px] font-black text-gray-300 uppercase">Sin salida</div>
+                      <div className="w-full h-40 bg-gray-50 rounded-[25px] border-2 border-dashed border-gray-100 flex items-center justify-center text-[8px] font-black text-gray-300 uppercase">Sin Registro</div>
                     )}
                   </div>
                 </div>
