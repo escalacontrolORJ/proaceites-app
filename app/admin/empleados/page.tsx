@@ -52,23 +52,96 @@ export default function ListaEmpleados() {
   const registrarMarcacion = async (empleado: any, modo: 'ingreso' | 'salida') => {
     const ahora = new Date()
     const hoyISO = ahora.toISOString() 
-    const hoyISO = ahora.toISOString()
     const soloFecha = hoyISO.split('T')[0]
 
     const { error } = await supabase
-@@ -86,6 +86,7 @@
+      .from('asistencia')
+      .insert([{
+        empleado_id: empleado.id,
+        nombres: empleado.nombres,
+        tipo_registro: modo,
+        fecha_hora: hoyISO,
+        fecha: soloFecha
+      }])
+
+    if (error) {
+      alert("Error al registrar: " + error.message)
+    } else {
+      fetchEstadosAsistencia(empleados)
     }
   }
 
-  // Filtro corregido para evitar errores con valores null o undefined
+  const borrarEmpleado = async () => {
+    if (!confirmarEliminar) return
+    const { error } = await supabase
+      .from('empleados')
+      .delete()
+      .eq('id', confirmarEliminar.id)
+
+    if (error) {
+      alert("Error al eliminar: " + error.message)
+    } else {
+      setEmpleados(empleados.filter(e => e.id !== confirmarEliminar.id))
+      setConfirmarEliminar(null)
+    }
+  }
+
   const filtrados = empleados.filter(e => 
     (e.nombres?.toLowerCase() || '').includes(busqueda.toLowerCase()) ||
     (e.rol_empresa?.toLowerCase() || '').includes(busqueda.toLowerCase())
-@@ -142,69 +143,69 @@
+  )
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 pb-24 text-black font-sans">
+      <div className="max-w-md mx-auto pt-6">
+        
+        <header className="mb-6 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-black text-blue-900 uppercase tracking-tighter leading-none">Personal</h1>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Gestión Proaceites</p>
+          </div>
+          <Link 
+            href="/admin/empleados/nuevo" 
+            className="w-12 h-12 bg-blue-700 text-white rounded-2xl flex items-center justify-center text-xl shadow-lg shadow-blue-100 active:scale-90 transition-all"
+          >
+            +
+          </Link>
+        </header>
+
+        <div className="relative mb-6">
+          <input 
+            type="text" 
+            placeholder="Buscar por nombre o cargo..." 
+            className="w-full p-4 pl-12 rounded-[22px] border-none shadow-sm text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+          <span className="absolute left-4 top-4 opacity-30 text-lg">🔍</span>
+        </div>
+
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 opacity-20">
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="font-black text-[10px] uppercase tracking-widest text-center">Cargando...</p>
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {filtrados.map((emp) => {
+              const ultimoReg = estadosAsistencia[emp.id]
+              const debeMarcarSalida = ultimoReg && ultimoReg.tipo_registro === 'ingreso'
+              const turnoCompletado = ultimoReg && ultimoReg.tipo_registro === 'salida'
+
+              return (
+                <div key={emp.id} className="bg-white p-4 rounded-[30px] shadow-sm border border-gray-100 flex flex-col gap-4 transition-all">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className="w-10 h-10 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-700 font-black text-xs uppercase flex-shrink-0">
+                        {emp.nombres ? emp.nombres.substring(0, 2) : '??'}
+                      </div>
+                      <div className="min-w-0">
+                        <h2 className="font-black text-[11px] uppercase text-gray-800 leading-tight truncate">
                           {emp.nombres || 'Sin Nombre'}
                         </h2>
                         <span className="text-[7px] font-black px-2 py-0.5 bg-gray-100 text-gray-400 rounded-md uppercase tracking-tighter">
-                          {emp.rol_empresa}
                           {emp.rol_empresa || 'Sin Rol'}
                         </span>
                       </div>
@@ -135,3 +208,4 @@ export default function ListaEmpleados() {
       </div>
     </div>
   )
+}
