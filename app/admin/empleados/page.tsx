@@ -8,6 +8,8 @@ export default function ListaEmpleados() {
   const [loading, setLoading] = useState(true)
   const [confirmarEliminar, setConfirmarEliminar] = useState<any>(null)
   const [busqueda, setBusqueda] = useState('')
+  // Estado para guardar el último registro de cada empleado y saber si es entrada o salida
+  const [estadosAsistencia, setEstadosAsistencia] = useState<Record<string, any>>({})
 
   useEffect(() => {
     fetchEmpleados()
@@ -18,19 +20,62 @@ export default function ListaEmpleados() {
     const { data, error } = await supabase
       .from('empleados')
       .select('*')
-      .order('nombres', { ascending: true }) // Ordenamos por la columna correcta
+      .order('nombres', { ascending: true })
     
     if (error) {
       console.error("Error al traer empleados:", error.message)
     } else {
       setEmpleados(data || [])
+      // Una vez tenemos los empleados, buscamos sus estados de hoy
+      fetchEstadosAsistencia(data || [])
     }
     setLoading(false)
   }
 
+  // NUEVA FUNCIÓN: Verifica si el empleado debe marcar entrada o salida
+  async function fetchEstadosAsistencia(listaEmpleados: any[]) {
+    const hoy = new Date().toISOString().split('T')[0]
+    const estados: Record<string, any> = {}
+
+    for (const emp of listaEmpleados) {
+      const { data } = await supabase
+        .from('asistencia')
+        .select('*')
+        .eq('empleado_id', emp.id)
+        .eq('fecha', hoy)
+        .order('fecha_hora', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      
+      estados[emp.id] = data || null
+    }
+    setEstadosAsistencia(estados)
+  }
+
+  const registrarMarcacion = async (empleado: any, modo: 'ingreso' | 'salida') => {
+    const hoy = new Date().toISOString()
+    const soloFecha = hoy.split('T')[0]
+
+    const { error } = await supabase
+      .from('asistencia')
+      .insert([{
+        empleado_id: empleado.id,
+        nombres: empleado.nombres,
+        tipo_registro: modo,
+        fecha_hora: hoy,
+        fecha: soloFecha
+      }])
+
+    if (error) {
+      alert("Error al registrar: " + error.message)
+    } else {
+      // Refrescar solo los estados para actualizar el botón
+      fetchEstadosAsistencia(empleados)
+    }
+  }
+
   const borrarEmpleado = async () => {
     if (!confirmarEliminar) return
-    
     const { error } = await supabase
       .from('empleados')
       .delete()
@@ -44,7 +89,6 @@ export default function ListaEmpleados() {
     }
   }
 
-  // Filtrado usando 'nombres'
   const filtrados = empleados.filter(e => 
     e.nombres?.toLowerCase().includes(busqueda.toLowerCase()) ||
     e.rol_empresa?.toLowerCase().includes(busqueda.toLowerCase())
@@ -54,7 +98,6 @@ export default function ListaEmpleados() {
     <div className="min-h-screen bg-gray-50 p-4 pb-24 text-black font-sans">
       <div className="max-w-md mx-auto pt-6">
         
-        {/* HEADER */}
         <header className="mb-6 flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-black text-blue-900 uppercase tracking-tighter leading-none">Personal</h1>
@@ -68,7 +111,6 @@ export default function ListaEmpleados() {
           </Link>
         </header>
 
-        {/* BUSCADOR */}
         <div className="relative mb-6">
           <input 
             type="text" 
@@ -86,71 +128,83 @@ export default function ListaEmpleados() {
           </div>
         ) : (
           <div className="grid gap-3">
-            {filtrados.map((emp) => (
-              <div key={emp.id} className="bg-white p-4 rounded-[30px] shadow-sm border border-gray-100 flex items-center justify-between transition-all active:scale-[0.98]">
-                <div className="flex items-center gap-4 min-w-0">
-                  {/* Avatar dinámico */}
-                  <div className="w-10 h-10 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-700 font-black text-xs uppercase flex-shrink-0">
-                    {emp.nombres ? emp.nombres.substring(0, 2) : '??'}
-                  </div>
-                  
-                  <div className="min-w-0">
-                    <h2 className="font-black text-[11px] uppercase text-gray-800 leading-tight truncate">
-                      {emp.nombres || 'Sin Nombre'}
-                    </h2>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className={`text-[7px] font-black px-2 py-0.5 rounded-md uppercase tracking-tighter ${
-                        emp.rol_empresa === 'Supervisor' ? 'bg-purple-100 text-purple-600' :
-                        emp.rol_empresa === 'Vendedor' ? 'bg-orange-100 text-orange-600' : 
-                        'bg-gray-100 text-gray-400'
-                      }`}>
-                        {emp.rol_empresa}
-                      </span>
-                      <span className="text-[8px] text-gray-300 font-mono">ID: {emp.id.slice(0, 5)}</span>
+            {filtrados.map((emp) => {
+              const ultimoReg = estadosAsistencia[emp.id]
+              // Determinamos si el botón debe ser de ingreso o salida
+              const debeMarcarSalida = ultimoReg && ultimoReg.tipo_registro === 'ingreso'
+              const turnoCompletado = ultimoReg && ultimoReg.tipo_registro === 'salida'
+
+              return (
+                <div key={emp.id} className="bg-white p-4 rounded-[30px] shadow-sm border border-gray-100 flex flex-col gap-4 transition-all">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className="w-10 h-10 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-700 font-black text-xs uppercase flex-shrink-0">
+                        {emp.nombres ? emp.nombres.substring(0, 2) : '??'}
+                      </div>
+                      
+                      <div className="min-w-0">
+                        <h2 className="font-black text-[11px] uppercase text-gray-800 leading-tight truncate">
+                          {emp.nombres || 'Sin Nombre'}
+                        </h2>
+                        <span className={`text-[7px] font-black px-2 py-0.5 rounded-md uppercase tracking-tighter ${
+                          emp.rol_empresa === 'Supervisor' ? 'bg-purple-100 text-purple-600' :
+                          emp.rol_empresa === 'Vendedor' ? 'bg-orange-100 text-orange-600' : 
+                          'bg-gray-100 text-gray-400'
+                        }`}>
+                          {emp.rol_empresa}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-1">
+                      <Link href={`/admin/empleados/editar/${emp.id}`} className="w-8 h-8 bg-gray-50 text-gray-400 rounded-lg flex items-center justify-center">
+                        <span className="text-xs">✏️</span>
+                      </Link>
+                      <button onClick={() => setConfirmarEliminar(emp)} className="w-8 h-8 bg-red-50 text-red-600 rounded-lg flex items-center justify-center">
+                        <span className="text-xs">🗑️</span>
+                      </button>
                     </div>
                   </div>
-                </div>
 
-                {/* ACCIONES */}
-                <div className="flex gap-1 flex-shrink-0">
-                  <Link 
-                    href={`/admin/empleados/editar/${emp.id}`} 
-                    className="w-9 h-9 bg-gray-50 text-gray-400 rounded-xl flex items-center justify-center hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                  >
-                    <span className="text-xs">✏️</span>
-                  </Link>
-                  <button 
-                    onClick={() => setConfirmarEliminar(emp)}
-                    className="w-9 h-9 bg-red-50/50 text-red-600 rounded-xl flex items-center justify-center hover:bg-red-600 hover:text-white transition-colors"
-                  >
-                    <span className="text-xs">🗑️</span>
-                  </button>
+                  {/* BOTÓN DE MARCACIÓN INTELIGENTE */}
+                  <div className="pt-2 border-t border-gray-50">
+                    {turnoCompletado ? (
+                      <div className="w-full py-2 bg-gray-100 text-gray-400 rounded-xl text-[9px] font-black uppercase text-center italic">
+                        ✅ Turno Finalizado Hoy
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => registrarMarcacion(emp, debeMarcarSalida ? 'salida' : 'ingreso')}
+                        className={`w-full py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-sm ${
+                          debeMarcarSalida 
+                          ? 'bg-orange-500 text-white shadow-orange-100' 
+                          : 'bg-blue-600 text-white shadow-blue-100'
+                        }`}
+                      >
+                        {debeMarcarSalida ? '🔔 Marcar Salida' : '⚡ Marcar Ingreso'}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
-        {/* MODAL DE CONFIRMACIÓN */}
+        {/* MODAL DE CONFIRMACIÓN (Mismo que ya tenías) */}
         {confirmarEliminar && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-200">
-            <div className="bg-white rounded-[45px] p-8 w-full max-w-sm text-center shadow-2xl border border-gray-100">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+            <div className="bg-white rounded-[45px] p-8 w-full max-w-sm text-center shadow-2xl">
               <div className="text-5xl mb-4">🚫</div>
-              <h2 className="text-xl font-black uppercase text-gray-900 mb-2 leading-none">Baja de Personal</h2>
-              <p className="text-[11px] text-gray-500 mb-8 px-4 leading-relaxed">
-                ¿Realmente deseas eliminar a <span className="font-bold text-black">{confirmarEliminar.nombres}</span> del sistema?
+              <h2 className="text-xl font-black uppercase text-gray-900 mb-2">Baja de Personal</h2>
+              <p className="text-[11px] text-gray-500 mb-8 px-4">
+                ¿Realmente deseas eliminar a <span className="font-bold text-black">{confirmarEliminar.nombres}</span>?
               </p>
               <div className="flex flex-col gap-3">
-                <button 
-                  onClick={borrarEmpleado} 
-                  className="w-full py-5 bg-red-600 text-white rounded-[22px] font-black uppercase shadow-lg shadow-red-100 active:scale-95 transition-transform"
-                >
+                <button onClick={borrarEmpleado} className="w-full py-5 bg-red-600 text-white rounded-[22px] font-black uppercase shadow-lg shadow-red-100">
                   Confirmar Borrado
                 </button>
-                <button 
-                  onClick={() => setConfirmarEliminar(null)} 
-                  className="w-full py-4 bg-gray-50 text-gray-400 rounded-[22px] font-black uppercase active:scale-95 transition-transform"
-                >
+                <button onClick={() => setConfirmarEliminar(null)} className="w-full py-4 bg-gray-50 text-gray-400 rounded-[22px] font-black uppercase">
                   Cancelar
                 </button>
               </div>
