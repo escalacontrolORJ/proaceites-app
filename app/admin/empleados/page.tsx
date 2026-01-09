@@ -51,7 +51,7 @@ export default function ListaEmpleados() {
 
   const registrarMarcacion = async (empleado: any, modo: 'ingreso' | 'salida') => {
     const ahora = new Date()
-    const hoyISO = ahora.toISOString() 
+    const hoyISO = ahora.toISOString()
     const soloFecha = hoyISO.split('T')[0]
 
     const { error } = await supabase
