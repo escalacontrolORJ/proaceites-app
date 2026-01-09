@@ -17,14 +17,16 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={`${inter.className} bg-gray-50 text-black`}>
-        {/* El 'pb-24' asegura que el contenido de las páginas 
-          no quede oculto detrás de la barra de navegación inferior.
+        {/* El contenedor principal tiene un min-h-screen para asegurar que el fondo cubra todo.
+          El pb-24 (padding-bottom) es VITAL para que el contenido no quede oculto 
+          detrás del Navbar que está fijo abajo.
         */}
-        <div className="min-h-screen pb-24">
+        <div className="min-h-screen pb-24 relative">
           {children}
         </div>
         
-        {/* El Navbar estará fijo en la parte inferior en todas las vistas */}
+        {/* El Navbar se renderiza en todas las páginas, pero él mismo 
+            se oculta en el login '/' gracias a su lógica interna. */}
         <Navbar />
       </body>
     </html>
