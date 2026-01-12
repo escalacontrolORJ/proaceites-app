@@ -1,160 +1,134 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { supabase } from '../../../lib/supabaseClient'
-import Link from 'next/link'
-import * as XLSX from 'xlsx'
-import { jsPDF } from 'jspdf'
-import 'jspdf-autotable'
+import { supabase } from '@/lib/supabaseClient'
 
-export default function ReporteAsistencia() {
-  const [registros, setRegistros] = useState<any[]>([])
-  const [empleadosLista, setEmpleadosLista] = useState<string[]>([])
+export default function ReportesAsistencia() {
+  const [datosAgrupados, setDatosAgrupados] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Estados de Filtros
-  const [filtroNombre, setFiltroNombre] = useState('')
-  const [fechaDesde, setFechaDesde] = useState('')
-  const [fechaHasta, setFechaHasta] = useState('')
-
   useEffect(() => {
-    fetchData()
+    fetchReportes()
   }, [])
 
-  async function fetchData() {
+  async function fetchReportes() {
     setLoading(true)
-    try {
-      // Traemos TODOS los registros individuales para no perder los actuales
-      const { data, error } = await supabase
-        .from('asistencia')
-        .select(`*, empleados(nombres)`)
-        .order('fecha_hora', { ascending: false })
+    const { data, error } = await supabase
+      .from('asistencia')
+      .select('*')
+      .order('fecha_hora', { ascending: true }) // Ordenamos por tiempo para procesar
 
-      if (error) throw error
-      setRegistros(data || [])
-
-      // Poblar el COMBO de nombres únicos
-      const nombres = data?.map(r => r.empleados?.nombres || r.nombres || 'SIN NOMBRE')
-      setEmpleadosLista(Array.from(new Set(nombres)).sort() as string[])
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
+    if (error) {
+      console.error("Error:", error.message)
+    } else {
+      procesarRegistros(data || [])
     }
+    setLoading(false)
   }
 
-  // Lógica de filtrado
-  const filtrados = registros.filter(reg => {
-    const nombreReg = (reg.empleados?.nombres || reg.nombres || "").toLowerCase()
-    const coincideNom = !filtroNombre || nombreReg === filtroNombre.toLowerCase()
-    const fechaReg = reg.fecha_hora ? reg.fecha_hora.split('T')[0] : ''
-    const coincideDesde = !fechaDesde || fechaReg >= fechaDesde
-    const coincideHasta = !fechaHasta || fechaReg <= fechaHasta
-    return coincideNom && coincideDesde && coincideHasta
-  })
+  // LÓGICA PARA UNIR INGRESO Y SALIDA EN UNA SOLA FILA
+  const procesarRegistros = (registros: any[]) => {
+    const agrupados: Record<string, any> = {}
 
-  // --- BOTÓN EXPORTAR EXCEL ---
-  const exportExcel = () => {
-    const dataToExport = filtrados.map(r => ({
-      Empleado: r.empleados?.nombres || r.nombres,
-      Fecha: r.fecha_hora.split('T')[0],
-      Hora: new Date(r.fecha_hora).toLocaleTimeString(),
-      Tipo: r.tipo_registro.toUpperCase(),
-      ID: r.id
-    }))
-    const ws = XLSX.utils.json_to_sheet(dataToExport)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Asistencia")
-    XLSX.writeFile(wb, "Reporte_Proaceites.xlsx")
-  }
+    registros.forEach(reg => {
+      // Creamos una llave única por empleado y día
+      const llave = `${reg.empleado_id}-${reg.fecha}`
+      
+      if (!agrupados[llave]) {
+        agrupados[llave] = {
+          nombres: reg.nombres,
+          fecha: reg.fecha,
+          ingreso: null,
+          salida: null,
+          foto_ingreso: null,
+          foto_salida: null,
+          horasTotales: '---'
+        }
+      }
 
-  // --- BOTÓN EXPORTAR PDF ---
-  const exportPDF = () => {
-    const doc = new jsPDF()
-    doc.text("Reporte de Asistencia Detallado", 14, 15)
-    const tableData = filtrados.map(r => [
-      r.empleados?.nombres || r.nombres,
-      r.fecha_hora.split('T')[0],
-      new Date(r.fecha_hora).toLocaleTimeString(),
-      r.tipo_registro.toUpperCase()
-    ])
-    ;(doc as any).autoTable({
-      head: [['Empleado', 'Fecha', 'Hora', 'Tipo']],
-      body: tableData,
-      startY: 20,
-      theme: 'grid'
+      if (reg.tipo_registro === 'ingreso') {
+        agrupados[llave].ingreso = reg.fecha_hora
+        agrupados[llave].foto_ingreso = reg.foto_url
+      } else if (reg.tipo_registro === 'salida') {
+        agrupados[llave].salida = reg.fecha_hora
+        agrupados[llave].foto_salida = reg.foto_url
+      }
+
+      // Si tenemos ambos, calculamos las horas
+      if (agrupados[llave].ingreso && agrupados[llave].salida) {
+        const inicio = new Date(agrupados[llave].ingreso).getTime()
+        const fin = new Date(agrupados[llave].salida).getTime()
+        const diffHrs = (fin - inicio) / (1000 * 60 * 60)
+        agrupados[llave].horasTotales = diffHrs.toFixed(2) + " hrs"
+      }
     })
-    doc.save("Reporte_Asistencia.pdf")
+
+    // Convertir el objeto de nuevo a un array y ordenar por fecha descendente
+    const resultado = Object.values(agrupados).sort((a: any, b: any) => 
+      new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+    )
+    setDatosAgrupados(resultado)
+  }
+
+  const formatearHora = (isoString: string | null) => {
+    if (!isoString) return '--:--'
+    return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 font-sans text-slate-900">
-      <nav className="bg-white p-4 sticky top-0 z-50 shadow-sm border-b">
-        <div className="max-w-6xl mx-auto flex gap-4">
-          <Link href="/admin/reportes" className="flex-1 bg-blue-900 text-white text-center py-2 rounded-xl text-xs font-black uppercase">📊 Reportes</Link>
-          <Link href="/admin/empleados" className="flex-1 bg-gray-100 text-gray-400 text-center py-2 rounded-xl text-xs font-black uppercase">👥 Personal</Link>
-        </div>
-      </nav>
+    <div className="p-4 bg-gray-50 min-h-screen text-black font-sans">
+      <div className="max-w-5xl mx-auto">
+        <h1 className="text-2xl font-black uppercase mb-6 text-blue-900 tracking-tighter">
+          Reporte Consolidado
+        </h1>
 
-      <div className="max-w-6xl mx-auto p-4 md:p-8">
-        <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-          <h1 className="text-3xl font-black text-blue-950 uppercase italic tracking-tighter">Auditoría de Asistencia</h1>
-          <div className="flex gap-2">
-            <button onClick={exportExcel} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-md">Excel</button>
-            <button onClick={exportPDF} className="bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-md">PDF</button>
-            <button onClick={fetchData} className="bg-blue-100 text-blue-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase">Actualizar</button>
-          </div>
-        </header>
-
-        {/* FILTROS CON COMBO */}
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm mb-10 grid grid-cols-1 md:grid-cols-3 gap-4 border border-slate-200">
-          <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2 mb-1 block">Seleccionar Empleado</label>
-            <select 
-              className="w-full p-3 bg-slate-50 rounded-2xl text-xs font-bold border-none outline-none ring-1 ring-slate-200"
-              value={filtroNombre} 
-              onChange={(e) => setFiltroNombre(e.target.value)}
-            >
-              <option value="">TODOS</option>
-              {empleadosLista.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </div>
-          <input type="date" className="p-3 bg-slate-50 rounded-2xl text-xs font-bold" value={fechaDesde} onChange={(e)=>setFechaDesde(e.target.value)}/>
-          <input type="date" className="p-3 bg-slate-50 rounded-2xl text-xs font-bold" value={fechaHasta} onChange={(e)=>setFechaHasta(e.target.value)}/>
-        </div>
-
-        {/* LISTADO DE TARJETAS */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {loading ? (
-            <p className="col-span-full text-center py-10 font-black text-slate-300 animate-pulse uppercase">Cargando datos...</p>
-          ) : filtrados.map((reg) => {
-            // Buscamos la foto en todas las columnas posibles
-            const foto = reg.foto_url || reg.foto || reg.foto_ingreso || reg.foto_salida;
-            const fecha = new Date(reg.fecha_hora);
-
-            return (
-              <div key={reg.id} className="bg-white rounded-[2.5rem] overflow-hidden shadow-sm border border-slate-100 hover:shadow-xl transition-all">
-                <div className="h-44 bg-slate-200 relative">
-                  {foto ? (
-                    <img src={foto} className="w-full h-full object-cover" alt="Foto" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-400 font-black text-[10px] uppercase">Sin Evidencia</div>
-                  )}
-                  <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-[8px] font-black uppercase text-white ${reg.tipo_registro === 'ingreso' ? 'bg-emerald-500' : 'bg-orange-500'}`}>
-                    {reg.tipo_registro}
-                  </div>
-                </div>
-                <div className="p-5">
-                  <h3 className="text-sm font-black text-blue-900 uppercase truncate">{reg.empleados?.nombres || reg.nombres}</h3>
-                  <div className="mt-4 flex justify-between items-end">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{fecha.toLocaleDateString()}</p>
-                      <p className="text-2xl font-black text-slate-800 tracking-tighter">{fecha.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+        <div className="bg-white shadow-sm rounded-[30px] overflow-hidden border border-gray-100">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100">
+                <th className="p-4 text-[10px] font-black uppercase text-gray-400">Personal</th>
+                <th className="p-4 text-[10px] font-black uppercase text-gray-400">Fecha</th>
+                <th className="p-4 text-[10px] font-black uppercase text-gray-400">Ingreso</th>
+                <th className="p-4 text-[10px] font-black uppercase text-gray-400">Salida</th>
+                <th className="p-4 text-[10px] font-black uppercase text-gray-400 text-center">Total</th>
+                <th className="p-4 text-[10px] font-black uppercase text-gray-400 text-center">Fotos</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {datosAgrupados.map((item, idx) => (
+                <tr key={idx} className="hover:bg-blue-50/20 transition-colors">
+                  <td className="p-4">
+                    <p className="font-bold text-[11px] uppercase leading-none">{item.nombres}</p>
+                  </td>
+                  <td className="p-4 text-[11px] text-gray-500 font-medium">{item.fecha}</td>
+                  <td className="p-4 text-[11px] font-bold text-blue-600">
+                    {formatearHora(item.ingreso)}
+                  </td>
+                  <td className="p-4 text-[11px] font-bold text-orange-600">
+                    {formatearHora(item.salida)}
+                  </td>
+                  <td className="p-4 text-center">
+                    <span className="bg-green-100 text-green-700 px-2 py-1 rounded-md text-[10px] font-black">
+                      {item.horasTotales}
+                    </span>
+                  </td>
+                  <td className="p-4 flex justify-center gap-2">
+                    {item.foto_ingreso && (
+                      <a href={item.foto_ingreso} target="_blank" className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center text-xs shadow-sm hover:scale-110 transition-transform">📸</a>
+                    )}
+                    {item.foto_salida && (
+                      <a href={item.foto_salida} target="_blank" className="w-8 h-8 bg-orange-50 rounded-lg flex items-center justify-center text-xs shadow-sm hover:scale-110 transition-transform">📸</a>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          
+          {datosAgrupados.length === 0 && !loading && (
+            <div className="p-10 text-center text-gray-300 font-bold uppercase text-xs tracking-widest">
+              No hay registros hoy
+            </div>
+          )}
         </div>
       </div>
     </div>
