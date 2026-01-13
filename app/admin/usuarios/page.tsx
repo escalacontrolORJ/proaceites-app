@@ -1,68 +1,122 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import AdminNav from '@/components/AdminNav'
 
 export default function GestionUsuarios() {
-  const [usuarios, setUsuarios] = useState<any[]>([])
-  const [nombre, setNombre] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [busqueda, setBusqueda] = useState('')
-  const [editandoId, setEditandoId] = useState<string | null>(null)
-  const [cargando, setCargando] = useState(false)
+  const [rol, setRol] = useState('USER') // Estado para el Rol
+  const [loading, setLoading] = useState(false)
+  const [mensaje, setMensaje] = useState({ tipo: '', texto: '' })
 
-  useEffect(() => { fetchUsuarios() }, [])
+  const handleRegistro = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setMensaje({ tipo: '', texto: '' })
 
-  async function fetchUsuarios() {
-    const { data: emps } = await supabase.from('empleados').select('*').order('nombres', { ascending: true })
-    const { data: asist } = await supabase.from('asistencia').select('empleado_id, fecha_hora').order('fecha_hora', { ascending: false })
-    const listado = emps?.map(u => ({
-      ...u,
-      ultima_actividad: asist?.find(a => a.empleado_id === u.id)?.fecha_hora || null
-    }))
-    setUsuarios(listado || [])
-  }
-
-  const guardar = async (e: React.FormEvent) => {
-    e.preventDefault(); setCargando(true)
     try {
-      if (editandoId) {
-        await supabase.from('empleados').update({ nombres: nombre, email: email.trim() }).eq('id', editandoId)
-      } else {
-        const { data: auth } = await supabase.auth.signUp({ email: email.trim(), password })
-        if (auth.user) await supabase.from('empleados').insert([{ id: auth.user.id, nombres: nombre, email: email.trim(), rol_empresa: 'Operario' }])
+      // 1. Crear el usuario en la autenticación de Supabase
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      })
+
+      if (authError) throw authError
+
+      if (authData.user) {
+        // 2. Insertar los datos adicionales (como el ROL) en tu tabla de perfiles/usuarios
+        // Asegúrate de que tu tabla en Supabase se llame 'usuarios' o 'perfiles'
+        const { error: dbError } = await supabase
+          .from('perfiles') 
+          .insert([
+            { 
+              id: authData.user.id, 
+              email: email, 
+              rol: rol 
+            }
+          ])
+
+        if (dbError) throw dbError
+
+        setMensaje({ tipo: 'success', texto: `Usuario ${email} creado con éxito como ${rol}` })
+        setEmail('')
+        setPassword('')
       }
-      setNombre(''); setEmail(''); setPassword(''); setEditandoId(null); fetchUsuarios()
-    } catch (err: any) { alert(err.message) }
-    setCargando(false)
+    } catch (error: any) {
+      setMensaje({ tipo: 'error', texto: error.message })
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       <AdminNav />
-      <div className="max-w-6xl mx-auto p-6">
-        <div className="bg-white p-8 rounded-[40px] shadow-lg mb-8">
-          <form onSubmit={guardar} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <input required placeholder="Nombre" value={nombre} onChange={e => setNombre(e.target.value)} className="p-4 bg-slate-50 rounded-2xl outline-none" />
-            <input required placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="p-4 bg-slate-50 rounded-2xl outline-none" />
-            {!editandoId && <input required type="password" placeholder="Contraseña" value={password} onChange={e => setPassword(e.target.value)} className="p-4 bg-slate-50 rounded-2xl outline-none" />}
-            <button className="bg-slate-900 text-white p-4 rounded-2xl font-black uppercase">{cargando ? 'Cargando...' : 'Confirmar'}</button>
+      
+      <div className="max-w-xl mx-auto p-6 md:p-10">
+        <div className="bg-white p-8 rounded-[40px] shadow-2xl border border-slate-100">
+          <div className="mb-8">
+            <h1 className="text-2xl font-black tracking-tighter">GESTIÓN DE USUARIOS</h1>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Crear nuevo acceso al sistema</p>
+          </div>
+
+          <form onSubmit={handleRegistro} className="space-y-6">
+            {/* EMAIL */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Correo Electrónico</label>
+              <input 
+                type="email" 
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="ejemplo@proaceites.com"
+                className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 font-bold outline-none transition-all"
+              />
+            </div>
+
+            {/* PASSWORD */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Contraseña</label>
+              <input 
+                type="password" 
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 font-bold outline-none transition-all"
+              />
+            </div>
+
+            {/* ROL SELECTOR */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Rol del Sistema</label>
+              <select 
+                value={rol} 
+                onChange={(e) => setRol(e.target.value)}
+                className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 font-bold outline-none transition-all appearance-none cursor-pointer"
+              >
+                <option value="USER">👤 COLABORADOR (USER)</option>
+                <option value="ADMIN">🔐 ADMINISTRADOR (ADMIN)</option>
+              </select>
+            </div>
+
+            {/* MENSAJES */}
+            {mensaje.texto && (
+              <div className={`p-4 rounded-2xl text-xs font-bold text-center ${mensaje.tipo === 'success' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                {mensaje.texto}
+              </div>
+            )}
+
+            {/* BOTÓN SUBMIT */}
+            <button 
+              type="submit"
+              disabled={loading}
+              className="w-full bg-slate-900 text-white p-5 rounded-2xl font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl shadow-slate-200 disabled:opacity-50"
+            >
+              {loading ? 'Procesando...' : 'Registrar Usuario'}
+            </button>
           </form>
-        </div>
-        <input type="text" placeholder="🔍 BUSCAR..." className="w-full p-4 mb-6 rounded-2xl border-2 border-slate-200 uppercase font-black text-xs" onChange={e => setBusqueda(e.target.value)} />
-        <div className="bg-white rounded-[40px] shadow-xl overflow-hidden">
-          <table className="w-full text-left">
-            <tbody className="divide-y">
-              {usuarios.filter(u => u.nombres.toLowerCase().includes(busqueda.toLowerCase())).map(u => (
-                <tr key={u.id} className="hover:bg-slate-50">
-                  <td className="p-6 font-bold uppercase text-xs">{u.nombres}</td>
-                  <td className="p-6 text-slate-400 text-xs">{u.email}</td>
-                  <td className="p-6 text-center text-[10px] font-bold text-blue-600">{u.ultima_actividad ? new Date(u.ultima_actividad).toLocaleString() : '---'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
     </div>
