@@ -1,4 +1,8 @@
 'use client'
+/**
+ * REPORTE ADMINISTRATIVO COMPLETO
+ * Incluye: Fotos (miniatura + zoom), Mapa (Links directos), Combo Empleados, Exportar Excel y PDF.
+ */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import AdminNav from '@/components/AdminNav'
@@ -112,6 +116,19 @@ export default function ReporteAdministrativo() {
     }
   }
 
+  // --- MANEJO DE FOTO (ZOOM) ---
+  const abrirFoto = (url: string) => {
+    if (!url) return;
+    const win = window.open("", "_blank");
+    win?.document.write(`
+      <html>
+        <body style="margin:0; background: #000; display: flex; align-items: center; justify-content: center; height: 100vh;">
+          <img src="${url}" style="max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 0 20px rgba(255,255,255,0.2);">
+        </body>
+      </html>
+    `);
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 pb-20 font-sans">
       <AdminNav />
@@ -120,11 +137,11 @@ export default function ReporteAdministrativo() {
         {/* FILTROS Y CONTROLES */}
         <div className="bg-white p-6 rounded-[35px] shadow-sm border border-slate-100 mb-8 flex flex-wrap gap-4 items-end">
           <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
-            <label className="text-[10px] font-black uppercase ml-2">Empleado</label>
+            <label className="text-[10px] font-black uppercase ml-2 text-slate-400">Empleado</label>
             <select 
               value={empleadoSeleccionado} 
               onChange={(e) => setEmpleadoSeleccionado(e.target.value)}
-              className="p-3 rounded-2xl bg-slate-100 font-bold outline-none border-none"
+              className="p-3 rounded-2xl bg-slate-100 font-bold outline-none border-none text-slate-700"
             >
               <option value="TODOS">TODOS LOS EMPLEADOS</option>
               {empleados.map(e => <option key={e.id} value={e.id}>{e.nombres}</option>)}
@@ -132,68 +149,96 @@ export default function ReporteAdministrativo() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-black uppercase ml-2">Desde</label>
-            <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="p-3 rounded-2xl bg-slate-100 font-bold outline-none" />
+            <label className="text-[10px] font-black uppercase ml-2 text-slate-400">Desde</label>
+            <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="p-3 rounded-2xl bg-slate-100 font-bold outline-none text-slate-700" />
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-black uppercase ml-2">Hasta</label>
-            <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="p-3 rounded-2xl bg-slate-100 font-bold outline-none" />
+            <label className="text-[10px] font-black uppercase ml-2 text-slate-400">Hasta</label>
+            <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="p-3 rounded-2xl bg-slate-100 font-bold outline-none text-slate-700" />
           </div>
 
           <div className="flex gap-2">
-            <button onClick={exportarExcel} className="bg-green-600 text-white p-3 rounded-2xl font-black text-[10px] hover:bg-green-700 shadow-lg">EXCEL</button>
-            <button onClick={exportarPDF} className="bg-red-600 text-white p-3 rounded-2xl font-black text-[10px] hover:bg-red-700 shadow-lg">PDF</button>
+            <button onClick={exportarExcel} className="bg-green-600 text-white px-4 py-3 rounded-2xl font-black text-[10px] hover:bg-green-700 shadow-lg transition-all">EXCEL</button>
+            <button onClick={exportarPDF} className="bg-red-600 text-white px-4 py-3 rounded-2xl font-black text-[10px] hover:bg-red-700 shadow-lg transition-all">PDF</button>
           </div>
         </div>
 
         {/* TABLA */}
         <div className="bg-white rounded-[40px] shadow-2xl overflow-hidden border">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-900 text-white text-[10px] uppercase font-black tracking-widest">
-                <th className="p-6">Empleado</th>
-                <th className="p-6 text-center">Fecha</th>
-                <th className="p-6 text-center">Entrada</th>
-                <th className="p-6 text-center">Salida</th>
-                <th className="p-6 text-center">Horas</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-bold">
-              {loading ? (
-                <tr><td colSpan={5} className="p-20 text-center animate-pulse">Cargando datos...</td></tr>
-              ) : filas.map((r, i) => (
-                <tr key={i} className="hover:bg-slate-50">
-                  <td className="p-6 text-xs uppercase">{r.nombre}</td>
-                  <td className="p-6 text-center text-xs text-slate-400">{r.fecha}</td>
-                  
-                  <td className="p-6">
-                    {r.entrada ? (
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="text-[10px] text-blue-600">{new Date(r.entrada.fecha_hora).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                        <button onClick={() => abrirMapa(r.entrada)} className="bg-blue-600 text-white p-2 rounded-xl text-lg shadow-md hover:scale-110 transition-transform">📍</button>
-                      </div>
-                    ) : <div className="text-center text-slate-200">--</div>}
-                  </td>
-
-                  <td className="p-6">
-                    {r.salida ? (
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="text-[10px] text-orange-600">{new Date(r.salida.fecha_hora).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                        <button onClick={() => abrirMapa(r.salida)} className="bg-orange-500 text-white p-2 rounded-xl text-lg shadow-md hover:scale-110 transition-transform">📍</button>
-                      </div>
-                    ) : <div className="text-center text-slate-200">--</div>}
-                  </td>
-
-                  <td className="p-6 text-center">
-                    <span className="bg-slate-900 text-white px-3 py-1 rounded-lg text-[10px]">
-                      {r.entrada && r.salida ? ((new Date(r.salida.fecha_hora).getTime() - new Date(r.entrada.fecha_hora).getTime()) / 3600000).toFixed(2) : '0.00'}h
-                    </span>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-900 text-white text-[10px] uppercase font-black tracking-widest">
+                  <th className="p-6">Empleado</th>
+                  <th className="p-6 text-center">Fecha</th>
+                  <th className="p-6 text-center">Entrada (GPS/FOTO)</th>
+                  <th className="p-6 text-center">Salida (GPS/FOTO)</th>
+                  <th className="p-6 text-center">Horas</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-bold">
+                {loading ? (
+                  <tr><td colSpan={5} className="p-20 text-center animate-pulse text-slate-400 uppercase">Cargando datos del servidor...</td></tr>
+                ) : filas.map((r, i) => (
+                  <tr key={i} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-6 text-xs uppercase text-slate-700">{r.nombre}</td>
+                    <td className="p-6 text-center text-xs text-slate-400">{r.fecha}</td>
+                    
+                    {/* CELDA ENTRADA */}
+                    <td className="p-6">
+                      {r.entrada ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="text-[10px] text-blue-600 font-black">{new Date(r.entrada.fecha_hora).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                          <div className="flex gap-2">
+                            {/* MINIATURA FOTO */}
+                            <button 
+                              onClick={() => abrirFoto(r.entrada.foto_url)}
+                              className="w-10 h-10 rounded-lg overflow-hidden border-2 border-white shadow-md bg-slate-200 hover:scale-110 transition-transform"
+                            >
+                              {r.entrada.foto_url && <img src={r.entrada.foto_url} className="w-full h-full object-cover" alt="E" />}
+                            </button>
+                            {/* BOTÓN MAPA */}
+                            <button onClick={() => abrirMapa(r.entrada)} className="bg-blue-600 text-white w-10 h-10 rounded-lg text-lg shadow-md hover:scale-110 transition-transform flex items-center justify-center">📍</button>
+                          </div>
+                        </div>
+                      ) : <div className="text-center text-slate-200 text-[10px]">SIN REGISTRO</div>}
+                    </td>
+
+                    {/* CELDA SALIDA */}
+                    <td className="p-6">
+                      {r.salida ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="text-[10px] text-orange-600 font-black">{new Date(r.salida.fecha_hora).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                          <div className="flex gap-2">
+                            {/* MINIATURA FOTO */}
+                            <button 
+                              onClick={() => abrirFoto(r.salida.foto_url)}
+                              className="w-10 h-10 rounded-lg overflow-hidden border-2 border-white shadow-md bg-slate-200 hover:scale-110 transition-transform"
+                            >
+                              {r.salida.foto_url && <img src={r.salida.foto_url} className="w-full h-full object-cover" alt="S" />}
+                            </button>
+                            {/* BOTÓN MAPA */}
+                            <button onClick={() => abrirMapa(r.salida)} className="bg-orange-500 text-white w-10 h-10 rounded-lg text-lg shadow-md hover:scale-110 transition-transform flex items-center justify-center">📍</button>
+                          </div>
+                        </div>
+                      ) : <div className="text-center text-slate-200 text-[10px]">SIN REGISTRO</div>}
+                    </td>
+
+                    {/* COLUMNA HORAS */}
+                    <td className="p-6 text-center">
+                      <span className="bg-slate-900 text-white px-3 py-1 rounded-lg text-[10px] font-black shadow-lg">
+                        {r.entrada && r.salida ? ((new Date(r.salida.fecha_hora).getTime() - new Date(r.entrada.fecha_hora).getTime()) / 3600000).toFixed(2) : '0.00'}h
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {filas.length === 0 && !loading && (
+            <div className="p-20 text-center text-slate-300 uppercase font-black tracking-widest">No hay asistencias registradas</div>
+          )}
         </div>
       </div>
     </div>
