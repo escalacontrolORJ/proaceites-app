@@ -8,7 +8,7 @@ export default function ReporteAdministrativo() {
   const [empleados, setEmpleados] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Filtros
+  // Filtros de Reporte
   const [fechaDesde, setFechaDesde] = useState(new Date().toISOString().split('T')[0])
   const [fechaHasta, setFechaHasta] = useState(new Date().toISOString().split('T')[0])
   const [empleadoSeleccionado, setEmpleadoSeleccionado] = useState('TODOS')
