@@ -7,6 +7,7 @@ export default function GestionUsuarios() {
   const [nombre, setNombre] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [busqueda, setBusqueda] = useState('') // NUEVO: Estado para buscar
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState({ tipo: '', texto: '' })
@@ -15,9 +16,7 @@ export default function GestionUsuarios() {
     fetchUsuarios()
   }, [])
 
-  // Función para obtener empleados y su última marca de asistencia
   async function fetchUsuarios() {
-    // 1. Obtener todos los empleados
     const { data: emps, error: empError } = await supabase
       .from('empleados')
       .select('*')
@@ -25,13 +24,11 @@ export default function GestionUsuarios() {
 
     if (empError) return console.error(empError)
 
-    // 2. Obtener la última marca de asistencia de cada uno
     const { data: asist } = await supabase
       .from('asistencia')
       .select('empleado_id, fecha_hora')
       .order('fecha_hora', { ascending: false })
 
-    // 3. Cruzar datos: asignar a cada usuario su última actividad
     const listadoConActividad = emps?.map(u => {
       const ultima = asist?.find(a => a.empleado_id === u.id)
       return {
@@ -48,36 +45,37 @@ export default function GestionUsuarios() {
     setCargando(true)
     setMensaje({ tipo: '', texto: '' })
 
+    // Limpiar espacios en blanco de los campos
+    const cleanEmail = email.trim()
+    const cleanNombre = nombre.trim()
+
     try {
       if (editandoId) {
-        // MODO EDICIÓN: Actualizamos nombre y email en la tabla empleados
         const { error } = await supabase
           .from('empleados')
           .update({ 
-            nombres: nombre, 
-            email: email,
-            rol_empresa: 'Operario' // O el rol actual del usuario
+            nombres: cleanNombre, 
+            email: cleanEmail,
+            rol_empresa: 'Operario' 
           })
           .eq('id', editandoId)
 
         if (error) throw error
         setMensaje({ tipo: 'success', texto: 'Usuario actualizado con éxito' })
       } else {
-        // MODO CREACIÓN: 1. Crear en Auth
         const { data: authData, error: authError } = await supabase.auth.signUp({
-          email,
+          email: cleanEmail,
           password,
         })
 
         if (authError) throw authError
 
-        // 2. Crear en tabla Empleados
         if (authData.user) {
           const { error: dbError } = await supabase.from('empleados').insert([
             {
               id: authData.user.id,
-              nombres: nombre,
-              email: email,
+              nombres: cleanNombre,
+              email: cleanEmail,
               rol_empresa: 'Operario'
             }
           ])
@@ -86,7 +84,6 @@ export default function GestionUsuarios() {
         }
       }
 
-      // Limpiar formulario y recargar
       setNombre(''); setEmail(''); setPassword(''); setEditandoId(null)
       fetchUsuarios()
     } catch (error: any) {
@@ -98,15 +95,9 @@ export default function GestionUsuarios() {
 
   const eliminarUsuario = async (id: string) => {
     if (!confirm('¿Seguro que deseas eliminar este colaborador? Perderá acceso al sistema.')) return
-    
-    // Eliminamos de la tabla empleados (en Auth se debe hacer manualmente o vía Edge Function por seguridad)
     const { error } = await supabase.from('empleados').delete().eq('id', id)
-    
-    if (error) {
-      setMensaje({ tipo: 'error', texto: 'Error al eliminar: ' + error.message })
-    } else {
-      fetchUsuarios()
-    }
+    if (error) setMensaje({ tipo: 'error', texto: 'Error al eliminar: ' + error.message })
+    else fetchUsuarios()
   }
 
   const prepararEdicion = (u: any) => {
@@ -116,12 +107,18 @@ export default function GestionUsuarios() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  // Filtrado de usuarios por búsqueda
+  const usuariosFiltrados = usuarios.filter(u => 
+    u.nombres.toLowerCase().includes(busqueda.toLowerCase()) || 
+    u.email.toLowerCase().includes(busqueda.toLowerCase())
+  )
+
   return (
     <div className="min-h-screen bg-slate-50 p-6 md:p-12 font-sans text-slate-900">
       <div className="max-w-6xl mx-auto">
         
-        {/* TARJETA DE REGISTRO */}
-        <div className="bg-white p-8 rounded-[45px] shadow-xl border border-white mb-10 transition-all">
+        {/* FORMULARIO */}
+        <div className="bg-white p-8 rounded-[45px] shadow-xl border border-white mb-10">
           <h1 className="text-2xl font-black uppercase tracking-tighter mb-6 flex items-center gap-3">
             <span className="bg-blue-600 text-white w-10 h-10 rounded-2xl flex items-center justify-center text-sm">
               {editandoId ? '✎' : '+'}
@@ -132,27 +129,27 @@ export default function GestionUsuarios() {
           <form onSubmit={guardarUsuario} className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="flex flex-col gap-1">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-3">Nombre Completo</label>
-              <input required type="text" placeholder="Ej: Alicia Lara" value={nombre} onChange={(e) => setNombre(e.target.value)} className="p-4 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none font-bold text-sm transition-all" />
+              <input required type="text" placeholder="Ej: Alicia Lara" value={nombre} onChange={(e) => setNombre(e.target.value)} className="p-4 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-sm transition-all" />
             </div>
             
             <div className="flex flex-col gap-1">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-3">Correo Electrónico</label>
-              <input required type="email" placeholder="ejemplo@correo.com" value={email} onChange={(e) => setEmail(e.target.value)} className="p-4 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none font-bold text-sm transition-all" />
+              <input required type="email" placeholder="ejemplo@correo.com" value={email} onChange={(e) => setEmail(e.target.value)} className="p-4 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-sm transition-all" />
             </div>
 
             {!editandoId && (
               <div className="flex flex-col gap-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase ml-3">Contraseña Temporal</label>
-                <input required type="password" placeholder="Mín. 6 caracteres" value={password} onChange={(e) => setPassword(e.target.value)} className="p-4 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none font-bold text-sm transition-all" />
+                <input required type="password" placeholder="Mín. 6 caracteres" value={password} onChange={(e) => setPassword(e.target.value)} className="p-4 rounded-3xl bg-slate-50 border-2 border-transparent focus:border-blue-500 outline-none font-bold text-sm transition-all" />
               </div>
             )}
 
             <div className="md:col-span-3 flex gap-3 mt-4">
-              <button disabled={cargando} className="flex-1 py-4 rounded-[25px] bg-slate-900 text-white font-black uppercase text-[10px] tracking-widest shadow-xl hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50">
-                {cargando ? 'Sincronizando...' : editandoId ? 'Guardar Cambios' : 'Habilitar Acceso Biométrico'}
+              <button disabled={cargando} className="flex-1 py-4 rounded-[25px] bg-slate-900 text-white font-black uppercase text-[10px] tracking-widest shadow-xl hover:bg-blue-700 active:scale-95 transition-all">
+                {cargando ? 'Procesando...' : editandoId ? 'Guardar Cambios' : 'Crear Acceso'}
               </button>
               {editandoId && (
-                <button type="button" onClick={() => {setEditandoId(null); setNombre(''); setEmail('')}} className="px-8 py-4 rounded-[25px] bg-slate-200 text-slate-500 font-black uppercase text-[10px] hover:bg-slate-300 transition-all">
+                <button type="button" onClick={() => {setEditandoId(null); setNombre(''); setEmail('')}} className="px-8 py-4 rounded-[25px] bg-slate-200 text-slate-500 font-black uppercase text-[10px]">
                   Cancelar
                 </button>
               )}
@@ -165,7 +162,17 @@ export default function GestionUsuarios() {
           )}
         </div>
 
-        {/* TABLA DE USUARIOS */}
+        {/* BUSCADOR Y TABLA */}
+        <div className="mb-6 px-4">
+            <input 
+                type="text" 
+                placeholder="🔍 BUSCAR EMPLEADO POR NOMBRE O CORREO..." 
+                className="w-full p-4 rounded-2xl border-2 border-slate-200 outline-none focus:border-blue-500 font-bold text-xs uppercase"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+            />
+        </div>
+
         <div className="bg-white rounded-[45px] shadow-2xl overflow-hidden border border-slate-100">
           <table className="w-full text-left">
             <thead className="bg-slate-900 text-white text-[9px] font-black uppercase tracking-[0.2em]">
@@ -177,9 +184,9 @@ export default function GestionUsuarios() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {usuarios.length === 0 ? (
-                <tr><td colSpan={4} className="p-20 text-center font-bold text-slate-300 uppercase">No hay colaboradores registrados</td></tr>
-              ) : usuarios.map((u) => (
+              {usuariosFiltrados.length === 0 ? (
+                <tr><td colSpan={4} className="p-20 text-center font-bold text-slate-300 uppercase">No se encontraron resultados</td></tr>
+              ) : usuariosFiltrados.map((u) => (
                 <tr key={u.id} className="hover:bg-blue-50/40 transition-all">
                   <td className="p-7">
                     <p className="font-black text-slate-800 uppercase text-xs">{u.nombres}</p>
