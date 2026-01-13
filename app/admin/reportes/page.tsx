@@ -1,5 +1,5 @@
 'use client'
-// VERSION 3.0 - FIX DEFINITIVO GPS LINKS
+// VERSION 2.8 - FIX EXTRACCIÓN DE GEOLOCALIZACION
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import AdminNav from '@/components/AdminNav'
@@ -74,13 +74,24 @@ export default function ReporteAdministrativo() {
     }
   };
 
-  // CELDA DE INFORMACIÓN CON LINK DE GOOGLE MAPS CORREGIDO
   const CeldaInfo = ({ registro, tipo }: { registro: any, tipo: string }) => {
     if (!registro) return <span className="text-slate-300 text-[10px]">--</span>;
 
-    // FORMATO DE URL PARA GOOGLE MAPS (VERIFICADO)
-    // Usamos el formato https://www.google.com/maps/search/?api=1&query=LAT,LON
-    const urlMapa = `https://www.google.com/maps/search/?api=1&query=${registro.latitud},${registro.longitud}`;
+    // LÓGICA PARA EXTRAER GPS DESDE LA COLUMNA 'geolocalizacion'
+    // Tu CSV muestra datos como "Lat: -0.123, Lon: -78.123" o simplemente el texto.
+    let urlMapa = "#";
+    let tieneGPS = false;
+
+    if (registro.geolocalizacion) {
+      // Limpiamos el texto para dejar solo coordenadas si vienen con etiquetas
+      const coords = registro.geolocalizacion.replace(/[a-zA-Z:\s]/g, '');
+      urlMapa = `https://www.google.com/maps?q=${coords}`;
+      tieneGPS = true;
+    } else if (registro.latitud && registro.longitud) {
+      // Por si acaso existen las columnas separadas
+      urlMapa = `https://www.google.com/maps?q=${registro.latitud},${registro.longitud}`;
+      tieneGPS = true;
+    }
 
     return (
       <div className="flex flex-col items-center justify-center gap-2">
@@ -89,34 +100,27 @@ export default function ReporteAdministrativo() {
         </span>
         
         <div className="flex gap-4 items-center bg-slate-50 p-2 rounded-2xl border border-slate-100">
+          {/* FOTO */}
           {registro.foto_url ? (
-            <button 
-              onClick={() => abrirFoto(registro.foto_url)}
-              className="hover:scale-110 transition-transform"
-            >
-              <img 
-                src={registro.foto_url} 
-                className="w-12 h-12 rounded-lg object-cover border-2 border-white shadow-md"
-                alt="Foto"
-              />
+            <button onClick={() => abrirFoto(registro.foto_url)} className="hover:scale-110 transition-transform">
+              <img src={registro.foto_url} className="w-12 h-12 rounded-lg object-cover border-2 border-white shadow-md" alt="Foto" />
             </button>
           ) : (
-            <div className="w-12 h-12 bg-slate-200 rounded-lg flex items-center justify-center text-[8px] text-slate-500">NO FOTO</div>
+            <div className="w-12 h-12 bg-slate-200 rounded-lg flex items-center justify-center text-[8px] text-slate-500 font-bold">SIN FOTO</div>
           )}
 
-          {/* LINK GPS CORREGIDO */}
-          {registro.latitud && registro.longitud ? (
+          {/* GPS - LINK CORREGIDO */}
+          {tieneGPS ? (
             <a 
               href={urlMapa} 
               target="_blank" 
-              rel="noreferrer"
-              className="text-2xl hover:scale-125 transition-all p-1 bg-white rounded-lg shadow-sm border border-slate-200"
-              title="Ver ubicación en Google Maps"
+              rel="noopener noreferrer"
+              className="w-10 h-10 flex items-center justify-center bg-white rounded-lg shadow-md border border-slate-200 hover:bg-blue-600 hover:text-white transition-all text-xl cursor-pointer"
             >
               📍
             </a>
           ) : (
-            <span className="text-xs opacity-20">📍</span>
+            <div className="w-10 h-10 flex items-center justify-center opacity-20 text-xl grayscale">📍</div>
           )}
         </div>
       </div>
@@ -127,12 +131,11 @@ export default function ReporteAdministrativo() {
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
       <AdminNav />
       <div className="max-w-7xl mx-auto p-4 md:p-10">
-        
         <div className="bg-white p-6 rounded-[30px] shadow-sm border border-slate-100 mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase">Empleado</label>
             <select value={empleadoSeleccionado} onChange={(e) => setEmpleadoSeleccionado(e.target.value)} className="w-full p-3 rounded-xl bg-slate-50 border-2 border-transparent focus:border-blue-500 font-bold outline-none">
-              <option value="TODOS">TODOS LOS EMPLEADOS</option>
+              <option value="TODOS">TODOS</option>
               {empleados.map(e => <option key={e.id} value={e.id}>{e.nombres}</option>)}
             </select>
           </div>
@@ -153,8 +156,8 @@ export default function ReporteAdministrativo() {
                 <tr className="bg-slate-900 text-white text-[10px] uppercase font-black tracking-widest">
                   <th className="p-5">Colaborador</th>
                   <th className="p-5 text-center">Fecha</th>
-                  <th className="p-5 text-center">Ingreso (Foto/GPS)</th>
-                  <th className="p-5 text-center">Salida (Foto/GPS)</th>
+                  <th className="p-5 text-center">Ingreso</th>
+                  <th className="p-5 text-center">Salida</th>
                   <th className="p-5 text-center">Total</th>
                 </tr>
               </thead>
