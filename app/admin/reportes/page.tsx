@@ -1,4 +1,5 @@
 'use client'
+VERSION 2.0 - LIMPIEZA
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import AdminNav from '@/components/AdminNav'
