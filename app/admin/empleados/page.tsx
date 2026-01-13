@@ -18,7 +18,6 @@ export default function MarcadoAsistencia() {
     }
   }
 
-  // Lógica Clave: Busca el último registro histórico, sin importar si fue hoy o ayer
   async function fetchUltimosMovimientos(lista: any[]) {
     const estados: Record<string, any> = {}
     for (const emp of lista) {
@@ -38,13 +37,17 @@ export default function MarcadoAsistencia() {
     setLoading(true)
     const ahora = new Date()
     
-    let urlMapa = "Sin GPS"
+    // Lógica de GPS con tiempo de espera corto para que no se quede "colgado"
+    let urlMapa = "Ubicación no disponible (Incógnito/Sin permiso)"
+    
     try {
-      const pos: any = await new Promise((res, rej) => 
-        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 })
-      )
+      const pos = await new Promise<any>((res, rej) => {
+        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 3000 });
+      });
       urlMapa = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`
-    } catch (e) { console.log("GPS no disponible") }
+    } catch (e) {
+      console.log("No se pudo obtener GPS, procediendo sin ubicación...");
+    }
 
     const { error } = await supabase.from('asistencia').insert([{
       empleado_id: empleado.id,
@@ -56,64 +59,50 @@ export default function MarcadoAsistencia() {
     }])
 
     if (!error) {
-      alert(`✅ ${tipo.toUpperCase()} registrado para ${empleado.nombres}`)
-      await fetchUltimosMovimientos(empleados) 
+      alert(`Registrado: ${tipo.toUpperCase()}`);
+      await fetchUltimosMovimientos(empleados);
     } else {
-      alert("Error: " + error.message)
+      alert("Error de base de datos: " + error.message);
     }
     setLoading(false)
   }
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen text-black font-sans">
-      <div className="max-w-md mx-auto">
-        <h1 className="text-2xl font-black text-blue-900 uppercase mb-2 tracking-tighter">Panel de Marcado</h1>
-        <p className="text-[10px] font-bold text-gray-400 uppercase mb-6">Modo Libre: Múltiples registros permitidos</p>
+    <div className="p-4 max-w-md mx-auto bg-white min-h-screen text-black">
+      <h1 className="text-xl font-black text-blue-900 uppercase mb-4">Registro Libre</h1>
+      
+      <input 
+        type="text" placeholder="Buscar..." 
+        className="w-full p-3 rounded-xl border mb-4 text-sm"
+        onChange={(e) => setBusqueda(e.target.value)}
+      />
 
-        <input 
-          type="text" 
-          placeholder="Buscar empleado..." 
-          className="w-full p-4 rounded-2xl border border-gray-100 shadow-sm mb-6 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-          onChange={(e) => setBusqueda(e.target.value)}
-        />
+      <div className="space-y-3">
+        {empleados.filter(e => e.nombres.toLowerCase().includes(busqueda.toLowerCase())).map(emp => {
+          const ultimo = estadosAsistencia[emp.id]
+          const esSalida = ultimo?.tipo_registro === 'ingreso'
 
-        <div className="grid gap-4">
-          {empleados.filter(e => e.nombres.toLowerCase().includes(busqueda.toLowerCase())).map(emp => {
-            const ultimo = estadosAsistencia[emp.id]
-            // Si el último registro fue 'ingreso', toca marcar 'salida'. En cualquier otro caso, 'ingreso'.
-            const esSalida = ultimo?.tipo_registro === 'ingreso'
-
-            return (
-              <div key={emp.id} className="bg-white p-5 rounded-[30px] shadow-sm border border-gray-100">
-                <div className="flex justify-between items-center mb-4">
-                  <div>
-                    <h2 className="font-black text-sm uppercase">{emp.nombres}</h2>
-                    <p className="text-[9px] text-gray-400 font-bold uppercase">{emp.rol_empresa}</p>
-                  </div>
-                  <span className={`text-[8px] font-black px-2 py-1 rounded-full uppercase ${esSalida ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
-                    {esSalida ? 'En Turno' : 'Fuera'}
-                  </span>
-                </div>
-
-                <button 
-                  disabled={loading}
-                  onClick={() => registrar(emp, esSalida ? 'salida' : 'ingreso')}
-                  className={`w-full py-4 rounded-2xl font-black text-xs uppercase text-white shadow-lg transition-transform active:scale-95 ${
-                    esSalida ? 'bg-orange-500 shadow-orange-100' : 'bg-blue-600 shadow-blue-100'
-                  } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {loading ? 'Cargando...' : esSalida ? '🔔 Marcar Salida' : '⚡ Marcar Ingreso'}
-                </button>
-                
-                {ultimo && (
-                  <p className="text-center text-[8px] mt-3 text-gray-300 font-bold uppercase">
-                    Último: {ultimo.tipo_registro} ({new Date(ultimo.fecha_hora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
-                  </p>
-                )}
+          return (
+            <div key={emp.id} className="p-4 border rounded-2xl shadow-sm bg-gray-50">
+              <div className="flex justify-between items-center mb-3">
+                <p className="font-bold text-sm uppercase">{emp.nombres}</p>
+                <span className="text-[9px] bg-white px-2 py-1 rounded border uppercase font-bold text-gray-400">
+                  {esSalida ? 'En turno' : 'Fuera'}
+                </span>
               </div>
-            )
-          })}
-        </div>
+              
+              <button 
+                disabled={loading}
+                onClick={() => registrar(emp, esSalida ? 'salida' : 'ingreso')}
+                className={`w-full py-3 rounded-xl font-black text-xs uppercase text-white shadow-md ${
+                  esSalida ? 'bg-orange-500' : 'bg-blue-600'
+                } ${loading ? 'opacity-50' : ''}`}
+              >
+                {loading ? 'Procesando...' : esSalida ? 'Marcar Salida' : 'Marcar Ingreso'}
+              </button>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
