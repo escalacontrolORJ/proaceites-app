@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import AdminNav from '@/components/AdminNav' // IMPORTANTE
+import AdminNav from '@/components/AdminNav'
 
 export default function GestionUsuarios() {
   const [usuarios, setUsuarios] = useState<any[]>([])
@@ -11,7 +11,6 @@ export default function GestionUsuarios() {
   const [busqueda, setBusqueda] = useState('')
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [cargando, setCargando] = useState(false)
-  const [mensaje, setMensaje] = useState({ tipo: '', texto: '' })
 
   useEffect(() => { fetchUsuarios() }, [])
 
@@ -35,46 +34,31 @@ export default function GestionUsuarios() {
         if (auth.user) await supabase.from('empleados').insert([{ id: auth.user.id, nombres: nombre, email: email.trim(), rol_empresa: 'Operario' }])
       }
       setNombre(''); setEmail(''); setPassword(''); setEditandoId(null); fetchUsuarios()
-      setMensaje({ tipo: 'success', texto: 'Operación exitosa' })
-    } catch (err: any) { setMensaje({ tipo: 'error', texto: err.message }) }
+    } catch (err: any) { alert(err.message) }
     setCargando(false)
-  }
-
-  const borrar = async (id: string) => {
-    if (confirm('¿Eliminar?')) { await supabase.from('empleados').delete().eq('id', id); fetchUsuarios() }
   }
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
-      <AdminNav /> {/* MENÚ INTEGRADO */}
+      <AdminNav />
       <div className="max-w-6xl mx-auto p-6">
         <div className="bg-white p-8 rounded-[40px] shadow-lg mb-8">
-          <h2 className="font-black uppercase mb-6 text-xl">{editandoId ? 'Editar' : 'Nuevo'} Colaborador</h2>
           <form onSubmit={guardar} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <input required placeholder="Nombre" value={nombre} onChange={e => setNombre(e.target.value)} className="p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-blue-500 font-bold" />
-            <input required placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-blue-500 font-bold" />
-            {!editandoId && <input required type="password" placeholder="Contraseña" value={password} onChange={e => setPassword(e.target.value)} className="p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-blue-500 font-bold" />}
-            <button className="md:col-span-3 bg-slate-900 text-white p-4 rounded-2xl font-black uppercase tracking-widest">{cargando ? 'Cargando...' : 'Confirmar'}</button>
+            <input required placeholder="Nombre" value={nombre} onChange={e => setNombre(e.target.value)} className="p-4 bg-slate-50 rounded-2xl outline-none" />
+            <input required placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="p-4 bg-slate-50 rounded-2xl outline-none" />
+            {!editandoId && <input required type="password" placeholder="Contraseña" value={password} onChange={e => setPassword(e.target.value)} className="p-4 bg-slate-50 rounded-2xl outline-none" />}
+            <button className="bg-slate-900 text-white p-4 rounded-2xl font-black uppercase">{cargando ? 'Cargando...' : 'Confirmar'}</button>
           </form>
         </div>
-
         <input type="text" placeholder="🔍 BUSCAR..." className="w-full p-4 mb-6 rounded-2xl border-2 border-slate-200 uppercase font-black text-xs" onChange={e => setBusqueda(e.target.value)} />
-
         <div className="bg-white rounded-[40px] shadow-xl overflow-hidden">
           <table className="w-full text-left">
-            <thead className="bg-slate-100 text-[10px] font-black uppercase text-slate-400">
-              <tr><th className="p-6">Nombre</th><th className="p-6">Email</th><th className="p-6 text-center">Última Actividad</th><th className="p-6 text-center">Acciones</th></tr>
-            </thead>
             <tbody className="divide-y">
               {usuarios.filter(u => u.nombres.toLowerCase().includes(busqueda.toLowerCase())).map(u => (
                 <tr key={u.id} className="hover:bg-slate-50">
                   <td className="p-6 font-bold uppercase text-xs">{u.nombres}</td>
                   <td className="p-6 text-slate-400 text-xs">{u.email}</td>
                   <td className="p-6 text-center text-[10px] font-bold text-blue-600">{u.ultima_actividad ? new Date(u.ultima_actividad).toLocaleString() : '---'}</td>
-                  <td className="p-6 flex justify-center gap-2">
-                    <button onClick={() => {setEditandoId(u.id); setNombre(u.nombres); setEmail(u.email)}} className="bg-blue-100 text-blue-600 px-3 py-1 rounded-lg font-black text-[10px]">EDITAR</button>
-                    <button onClick={() => borrar(u.id)} className="bg-red-100 text-red-600 px-3 py-1 rounded-lg font-black text-[10px]">BORRAR</button>
-                  </td>
                 </tr>
               ))}
             </tbody>
