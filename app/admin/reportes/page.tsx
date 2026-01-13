@@ -3,144 +3,175 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import * as XLSX from 'xlsx'
 
-export default function ReportesAsistencia() {
-  const [reportes, setReportes] = useState<any[]>([])
+export default function ReporteConsolidado() {
+  const [reportesRaw, setReportesRaw] = useState<any[]>([])
+  const [empleados, setEmpleados] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [busqueda, setBusqueda] = useState('')
   
-  // Rango de fechas: Hoy por defecto
+  // Filtros
+  const [empleadoSeleccionado, setEmpleadoSeleccionado] = useState('')
   const [fechaInicio, setFechaInicio] = useState(new Date().toISOString().split('T')[0])
   const [fechaFin, setFechaFin] = useState(new Date().toISOString().split('T')[0])
 
   useEffect(() => {
-    fetchReportes()
+    fetchDatos()
   }, [])
 
-  async function fetchReportes() {
+  async function fetchDatos() {
     setLoading(true)
-    // Consultamos la tabla asistencia
-    const { data, error } = await supabase
+    // 1. Traer empleados para el Combo
+    const { data: emps } = await supabase.from('empleados').select('nombres').order('nombres')
+    setEmpleados(emps || [])
+
+    // 2. Traer todos los registros de asistencia
+    const { data: asist } = await supabase
       .from('asistencia')
       .select('*')
-      .order('fecha_hora', { ascending: false })
-
-    if (error) {
-      console.error("Error:", error.message)
-    } else {
-      setReportes(data || [])
-    }
+      .order('fecha_hora', { ascending: true })
+    
+    setReportesRaw(asist || [])
     setLoading(false)
   }
 
-  // Filtrado en tiempo real
-  const filtrados = reportes.filter(reg => {
-    const nombre = reg.nombres || 'SIN NOMBRE'
-    const cumpleNombre = nombre.toLowerCase().includes(busqueda.toLowerCase())
-    const cumpleFechaInicio = fechaInicio ? reg.fecha >= fechaInicio : true
-    const cumpleFechaFin = fechaFin ? reg.fecha <= fechaFin : true
-    return cumpleNombre && cumpleFechaInicio && cumpleFechaFin
-  })
+  // LÓGICA PARA CONSOLIDAR INGRESO Y SALIDA EN UNA SOLA FILA
+  const procesarDatos = () => {
+    const agrupados: Record<string, any> = {}
 
-  const formatearHora = (iso: string) => {
-    if (!iso) return '--:--'
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+    reportesRaw.forEach(reg => {
+      // Creamos una llave única por empleado y por día
+      const llave = `${reg.empleado_id}-${reg.fecha}`
+      
+      if (!agrupados[llave]) {
+        agrupados[llave] = {
+          id: reg.id,
+          nombre: reg.nombres || 'Sin Nombre',
+          fecha: reg.fecha,
+          ingreso: null,
+          salida: null,
+          foto_in: null,
+          foto_out: null,
+          gps: reg.ubicacion,
+          horas: 0
+        }
+      }
+
+      if (reg.tipo_registro === 'ingreso') {
+        agrupados[llave].ingreso = reg.fecha_hora
+        agrupados[llave].foto_in = reg.foto_url
+      } else if (reg.tipo_registro === 'salida') {
+        agrupados[llave].salida = reg.fecha_hora
+        agrupados[llave].foto_out = reg.foto_url
+      }
+
+      // Calcular horas si ya tiene ambos
+      if (agrupados[llave].ingreso && agrupados[llave].salida) {
+        const inTime = new Date(agrupados[llave].ingreso).getTime()
+        const outTime = new Date(agrupados[llave].salida).getTime()
+        agrupados[llave].horas = ((outTime - inTime) / (1000 * 60 * 60)).toFixed(2)
+      }
+    })
+
+    // Convertir objeto a Array y aplicar filtros de la interfaz
+    return Object.values(agrupados).filter((item: any) => {
+      const cumpleNombre = empleadoSeleccionado === '' || item.nombre === empleadoSeleccionado
+      const cumpleFecha = item.fecha >= fechaInicio && item.fecha <= fechaFin
+      return cumpleNombre && cumpleFecha
+    }).reverse() // Lo más nuevo arriba
   }
 
-  const exportarExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(filtrados.map(r => ({
-      Empleado: r.nombres || 'Sin Nombre',
-      Fecha: r.fecha,
-      Tipo: r.tipo_registro?.toUpperCase(),
-      Hora: formatearHora(r.fecha_hora),
-      Ubicacion: r.ubicacion || 'No registrada'
-    })))
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Asistencia")
-    XLSX.writeFile(wb, `Reporte_Proaceites_${fechaInicio}.xlsx`)
+  const datosFinales = procesarDatos()
+
+  const formatearHora = (iso: string | null) => {
+    if (!iso) return '--:--'
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
   }
 
   return (
     <div className="p-4 bg-gray-50 min-h-screen text-black font-sans">
       <div className="max-w-6xl mx-auto">
         <header className="mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div>
-            <h1 className="text-2xl font-black uppercase text-blue-900 tracking-tighter">Panel de Asistencia</h1>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Registros de Marcaciones Reales</p>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={exportarExcel} className="bg-green-600 text-white px-5 py-2 rounded-2xl text-[10px] font-black uppercase shadow-lg hover:bg-green-700 transition-all">Excel</button>
-            <button onClick={() => window.print()} className="bg-gray-800 text-white px-5 py-2 rounded-2xl text-[10px] font-black uppercase shadow-lg hover:bg-black transition-all">Imprimir PDF</button>
-          </div>
+          <h1 className="text-2xl font-black uppercase text-blue-900 tracking-tighter">Reporte Consolidado</h1>
+          <button 
+            onClick={() => {
+              const ws = XLSX.utils.json_to_sheet(datosFinales)
+              const wb = XLSX.utils.book_new()
+              XLSX.utils.book_append_sheet(wb, ws, "Reporte")
+              XLSX.writeFile(wb, "Asistencia_Proaceites.xlsx")
+            }}
+            className="bg-green-600 text-white px-6 py-2 rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-green-100"
+          >
+            Exportar Excel
+          </button>
         </header>
 
-        {/* FILTROS */}
+        {/* FILTROS CON COMBO */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-          <div className="relative">
-            <input 
-              type="text" 
-              placeholder="🔍 Buscar por nombre..." 
-              className="w-full p-4 rounded-2xl border-none shadow-sm text-xs bg-white outline-none focus:ring-2 focus:ring-blue-500" 
-              onChange={(e) => setBusqueda(e.target.value)} 
-            />
+          <div className="flex flex-col gap-1">
+            <span className="text-[9px] font-black text-gray-400 uppercase ml-2">Seleccionar Empleado</span>
+            <select 
+              className="p-3 rounded-xl border-none shadow-sm text-xs bg-white font-bold"
+              value={empleadoSeleccionado}
+              onChange={(e) => setEmpleadoSeleccionado(e.target.value)}
+            >
+              <option value="">TODOS LOS EMPLEADOS</option>
+              {empleados.map((e, i) => (
+                <option key={i} value={e.nombres}>{e.nombres}</option>
+              ))}
+            </select>
           </div>
-          <div className="flex items-center gap-2 bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
-            <span className="text-[9px] font-black text-gray-400 uppercase">Desde</span>
-            <input type="date" value={fechaInicio} className="text-xs border-none outline-none w-full font-bold" onChange={(e) => setFechaInicio(e.target.value)} />
+          <div className="flex flex-col gap-1">
+            <span className="text-[9px] font-black text-gray-400 uppercase ml-2">Desde</span>
+            <input type="date" value={fechaInicio} className="p-3 rounded-xl border-none shadow-sm text-xs font-bold" onChange={(e) => setFechaInicio(e.target.value)} />
           </div>
-          <div className="flex items-center gap-2 bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
-            <span className="text-[9px] font-black text-gray-400 uppercase">Hasta</span>
-            <input type="date" value={fechaFin} className="text-xs border-none outline-none w-full font-bold" onChange={(e) => setFechaFin(e.target.value)} />
+          <div className="flex flex-col gap-1">
+            <span className="text-[9px] font-black text-gray-400 uppercase ml-2">Hasta</span>
+            <input type="date" value={fechaFin} className="p-3 rounded-xl border-none shadow-sm text-xs font-bold" onChange={(e) => setFechaFin(e.target.value)} />
           </div>
         </div>
 
-        {/* TABLA */}
-        <div className="bg-white shadow-xl rounded-[35px] overflow-hidden border border-gray-100">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400">
-                  <th className="p-5">Personal</th>
-                  <th className="p-5 text-center">Fecha</th>
-                  <th className="p-5 text-center">Evento</th>
-                  <th className="p-5 text-center">Hora</th>
-                  <th className="p-5 text-center">Mapa</th>
-                  <th className="p-5 text-center">Foto</th>
+        {/* TABLA CONSOLIDADA */}
+        <div className="bg-white shadow-xl rounded-[30px] overflow-hidden border border-gray-100">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400">
+                <th className="p-4">Nombre</th>
+                <th className="p-4 text-center">Fecha</th>
+                <th className="p-4 text-center">Ingreso</th>
+                <th className="p-4 text-center">Salida</th>
+                <th className="p-4 text-center">Total Horas</th>
+                <th className="p-4 text-center">Fotos (In/Out)</th>
+                <th className="p-4 text-center">Ubicación</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {loading ? (
+                <tr><td colSpan={7} className="p-10 text-center font-black animate-pulse">CARGANDO REGISTROS...</td></tr>
+              ) : datosFinales.map((item: any, i) => (
+                <tr key={i} className="hover:bg-blue-50/20 font-bold text-[11px] uppercase transition-colors">
+                  <td className="p-4 text-blue-900">{item.nombre}</td>
+                  <td className="p-4 text-center text-gray-500 font-medium">{item.fecha}</td>
+                  <td className="p-4 text-center text-blue-600">{formatearHora(item.ingreso)}</td>
+                  <td className="p-4 text-center text-orange-600">{formatearHora(item.salida)}</td>
+                  <td className="p-4 text-center">
+                    <span className="bg-green-100 text-green-700 px-2 py-1 rounded-md text-[10px]">
+                      {item.horas} hrs
+                    </span>
+                  </td>
+                  <td className="p-4 text-center">
+                    <div className="flex justify-center gap-2">
+                      {item.foto_in ? <a href={item.foto_in} target="_blank" className="opacity-80 hover:opacity-100">📸<span className="text-[7px]">IN</span></a> : '--'}
+                      {item.foto_out ? <a href={item.foto_out} target="_blank" className="opacity-80 hover:opacity-100">📸<span className="text-[7px]">OUT</span></a> : '--'}
+                    </div>
+                  </td>
+                  <td className="p-4 text-center">
+                    {item.gps && item.gps.startsWith('http') ? (
+                      <a href={item.gps} target="_blank" className="text-blue-500 underline text-[9px]">Mapa 📍</a>
+                    ) : 'No GPS'}
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {loading ? (
-                  <tr><td colSpan={6} className="p-16 text-center text-xs font-black text-blue-600 animate-pulse">CARGANDO REGISTROS...</td></tr>
-                ) : filtrados.map((reg) => (
-                  <tr key={reg.id} className="hover:bg-blue-50/10 transition-colors">
-                    <td className="p-5 font-black text-[11px] uppercase text-gray-800">
-                      {reg.nombres || 'SIN NOMBRE'}
-                    </td>
-                    <td className="p-5 text-center text-[10px] text-gray-500 font-bold">{reg.fecha}</td>
-                    <td className="p-5 text-center">
-                      <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase ${
-                        reg.tipo_registro === 'ingreso' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
-                      }`}>
-                        {reg.tipo_registro}
-                      </span>
-                    </td>
-                    <td className="p-5 text-center text-[11px] font-black text-gray-700">{formatearHora(reg.fecha_hora)}</td>
-                    <td className="p-5 text-center">
-                      {reg.ubicacion ? (
-                        <a href={reg.ubicacion} target="_blank" className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full text-[9px] font-black hover:bg-blue-600 hover:text-white transition-all uppercase">
-                          📍 Ver Mapa
-                        </a>
-                      ) : <span className="text-[8px] text-gray-300">S/N</span>}
-                    </td>
-                    <td className="p-5 text-center">
-                      {reg.foto_url ? (
-                        <a href={reg.foto_url} target="_blank" className="text-xl inline-block hover:scale-125 transition-transform">📸</a>
-                      ) : <span className="text-[8px] text-gray-300">SIN FOTO</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
