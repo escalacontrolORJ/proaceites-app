@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation'
 export default function AdminNav() {
   const pathname = usePathname()
 
-  // Función para saber qué link está activo y ponerlo azul
   const linkStyle = (path: string) => `
     px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all
     ${pathname === path 
@@ -17,7 +16,6 @@ export default function AdminNav() {
     <nav className="bg-white border-b border-slate-100 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
         
-        {/* LOGO O TÍTULO */}
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
             <span className="text-white font-black text-xl">P</span>
@@ -25,8 +23,7 @@ export default function AdminNav() {
           <span className="font-black tracking-tighter text-xl">PROACEITES</span>
         </div>
 
-        {/* LINKS DE NAVEGACIÓN */}
-        <div className="flex gap-2">
+        <div className="flex gap-4">
           <Link href="/admin/reportes" className={linkStyle('/admin/reportes')}>
             📊 Reportes
           </Link>
@@ -36,11 +33,7 @@ export default function AdminNav() {
           </Link>
         </div>
 
-        {/* BOTÓN SALIR (Opcional) */}
-        <Link 
-          href="/login" 
-          className="text-[10px] font-black text-red-400 hover:text-red-600 uppercase tracking-widest"
-        >
+        <Link href="/login" className="text-[10px] font-black text-red-400 uppercase tracking-widest">
           Salir
         </Link>
 
