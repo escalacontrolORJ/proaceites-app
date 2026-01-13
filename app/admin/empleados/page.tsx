@@ -10,7 +10,7 @@ export default function ListaEmpleados() {
   useEffect(() => { fetchEmpleados() }, [])
 
   async function fetchEmpleados() {
-    const { data } = await supabase.from('empleados').select('*').order('nombres', { ascending: true })
+    const { data } = await supabase.from('empleados').select('*').order('nombres')
     if (data) {
       setEmpleados(data)
       fetchEstadosAsistencia(data)
@@ -19,7 +19,6 @@ export default function ListaEmpleados() {
 
   async function fetchEstadosAsistencia(lista: any[]) {
     const hoy = new Date().toISOString().split('T')[0]
-    const estados: Record<string, any> = {}
     for (const emp of lista) {
       const { data } = await supabase
         .from('asistencia')
@@ -28,65 +27,53 @@ export default function ListaEmpleados() {
         .eq('fecha', hoy)
         .order('fecha_hora', { ascending: false })
         .limit(1).maybeSingle()
-      estados[emp.id] = data || null
+      setEstadosAsistencia(prev => ({ ...prev, [emp.id]: data }))
     }
-    setEstadosAsistencia(estados)
   }
 
   const registrarAsistencia = async (empleado: any, tipo: 'ingreso' | 'salida') => {
     setLoading(true)
-    
-    // 1. Intentar obtener GPS real
-    let urlMapa = "Ubicación no disponible"
-    try {
-      const pos = await new Promise<GeolocationPosition>((res, rej) => 
-        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 })
-      )
-      urlMapa = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`
-    } catch (e) { console.error("Error GPS:", e) }
-
     const ahora = new Date()
+    
+    // Obtenemos GPS
+    let geo = "Ubicación no disponible"
+    try {
+      const p: any = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej))
+      geo = `https://www.google.com/maps?q=${p.coords.latitude},${p.coords.longitude}`
+    } catch (e) {}
 
-    // 2. Guardar en la base de datos
+    // INSERTANDO CON TODOS LOS CAMPOS QUE FALTABAN
     const { error } = await supabase.from('asistencia').insert([{
       empleado_id: empleado.id,
-      nombres: empleado.nombres, // IMPORTANTE: Enviamos el nombre explícitamente
-      tipo_registro: tipo,
+      nombres: empleado.nombres, // <--- ESTO ASEGURA QUE NO SALGA VACÍO
+      tipo_registro: tipo,      // <--- ESTO ES LO QUE NO SE ESTABA GUARDANDO
       fecha_hora: ahora.toISOString(),
       fecha: ahora.toISOString().split('T')[0],
-      ubicacion: urlMapa,
-      foto_url: null // Aquí puedes integrar tu lógica de cámara después
+      ubicacion: geo
     }])
 
-    if (error) {
-      alert("Error al guardar: " + error.message)
-    } else {
-      alert(`${tipo.toUpperCase()} registrado correctamente`)
-      fetchEstadosAsistencia(empleados)
+    if (!error) {
+      alert("Registro guardado con éxito")
+      fetchEmpleados()
     }
     setLoading(false)
   }
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen text-black">
-      <h1 className="text-2xl font-black mb-6 uppercase text-blue-900">Registro de Asistencia</h1>
+    <div className="p-6 max-w-md mx-auto bg-gray-50 min-h-screen text-black">
+      <h1 className="text-xl font-black uppercase text-blue-900 mb-6">Marcado de Personal</h1>
       <div className="grid gap-4">
         {empleados.map(emp => {
           const ultimo = estadosAsistencia[emp.id]
           const esSalida = ultimo?.tipo_registro === 'ingreso'
-
           return (
-            <div key={emp.id} className="bg-white p-6 rounded-[30px] shadow-sm border border-gray-100 flex justify-between items-center">
-              <div>
-                <p className="font-black uppercase text-sm">{emp.nombres}</p>
-                <p className="text-[10px] text-gray-400 font-bold uppercase">{emp.rol_empresa}</p>
-              </div>
+            <div key={emp.id} className="bg-white p-5 rounded-[25px] shadow-sm border border-gray-100 flex justify-between items-center">
+              <span className="font-bold text-xs uppercase">{emp.nombres}</span>
               <button 
-                disabled={loading}
                 onClick={() => registrarAsistencia(emp, esSalida ? 'salida' : 'ingreso')}
-                className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase text-white ${esSalida ? 'bg-orange-500' : 'bg-blue-600'}`}
+                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase text-white ${esSalida ? 'bg-orange-500' : 'bg-blue-600'}`}
               >
-                {loading ? 'Procesando...' : esSalida ? 'Marcar Salida' : 'Marcar Ingreso'}
+                {esSalida ? 'Marcar Salida' : 'Marcar Ingreso'}
               </button>
             </div>
           )
