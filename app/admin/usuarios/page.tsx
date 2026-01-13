@@ -1,141 +1,138 @@
 'use client'
-/**
- * SISTEMA DE GESTIÓN DE ASISTENCIA
- * VERSION: V1.1 (Sincronizada con tabla empleados)
- * MÓDULO: GESTIÓN DE USUARIOS
- */
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import AdminNav from '@/components/AdminNav'
 
-export default function GestionUsuarios() {
-  const [usuarios, setUsuarios] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [version] = useState("V1.1")
+export default function UsuariosPage() {
+  const [usuarios, setUsuarios] = useState([])
+  const [loading, setLoading] = useState(false)
+  
+  // Estados para el formulario
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('') // ¡Necesitamos esto para el acceso!
+  const [nombres, setNombres] = useState('')
+  const [rol, setRol] = useState('Vendedor')
+
+  // 1. CARGAR LISTADO DE USUARIOS
+  const fetchUsuarios = async () => {
+    const { data, error } = await supabase
+      .from('empleados')
+      .select('*')
+      .order('creado_el', { ascending: false })
+    
+    if (error) console.error('Error al cargar:', error.message)
+    else setUsuarios(data || [])
+  }
 
   useEffect(() => {
     fetchUsuarios()
   }, [])
 
-  async function fetchUsuarios() {
+  // 2. FUNCIÓN PARA GRABAR (Aquí está la corrección del ID)
+  const handleGuardarUsuario = async (e: React.FormEvent) => {
+    e.preventDefault()
     setLoading(true)
-    try {
-      // Consultamos las columnas exactas de tu archivo CSV
-      const { data, error } = await supabase
-        .from('empleados')
-        .select('id, nombres, email, rol_empresa, creado_el')
-        .order('nombres', { ascending: true })
 
-      if (error) throw error
-      setUsuarios(data || [])
+    try {
+      // A. CREAR ACCESO EN SUPABASE AUTH
+      // Esto genera el correo y la clave para que puedan hacer Login
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: email,
+        password: password, // La clave que definas en el formulario
+      })
+
+      if (authError) throw authError
+
+      if (authData.user) {
+        // B. CREAR PERFIL EN TABLA EMPLEADOS
+        // Usamos el ID que nos dio Auth para que no salga "ID is null"
+        const { error: dbError } = await supabase
+          .from('empleados')
+          .insert([
+            { 
+              id: authData.user.id,        // EL ID VITAL
+              nombres: nombres,
+              nombre: nombres,             // Llenamos ambos por si acaso
+              email: email,
+              rol_empresa: rol,
+              creado_el: new Date().toISOString()
+            }
+          ])
+
+        if (dbError) throw dbError
+        
+        alert("Usuario creado y acceso habilitado con éxito")
+        // Limpiar formulario y recargar lista
+        setEmail('')
+        setPassword('')
+        setNombres('')
+        fetchUsuarios()
+      }
     } catch (error: any) {
-      console.error('Error Supabase:', error.message)
-      alert('Error al cargar: ' + error.message)
+      alert("Error crítico: " + error.message)
     } finally {
       setLoading(false)
     }
   }
 
-  const eliminarUsuario = async (id: string, nombre: string) => {
-    if (confirm(`¿Estás seguro de que deseas eliminar a ${nombre}? Esta acción es permanente.`)) {
-      const { error } = await supabase
-        .from('empleados')
-        .delete()
-        .eq('id', id)
-
-      if (error) {
-        alert('No se pudo eliminar: ' + error.message)
-      } else {
-        setUsuarios(usuarios.filter(u => u.id !== id))
-      }
-    }
-  }
-
   return (
-    <div className="min-h-screen bg-slate-50 pb-20 font-sans">
-      <AdminNav />
+    <div className="p-8">
+      <h1 className="text-2xl font-bold mb-6">Gestión de Usuarios</h1>
       
-      <div className="max-w-6xl mx-auto p-4 md:p-10">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
-          <div>
-            <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">Personal</h1>
-            <p className="text-slate-500 font-bold text-sm uppercase tracking-widest flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-              Base de Datos Activa {version}
-            </p>
-          </div>
-          
-          <button 
-            onClick={() => window.location.href = '/admin/usuarios/nuevo'}
-            className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-xs shadow-xl hover:bg-blue-700 transition-all uppercase tracking-widest"
+      {/* Formulario */}
+      <form onSubmit={handleGuardarUsuario} className="bg-white p-6 rounded-xl shadow-md mb-8 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <input 
+            type="text" placeholder="Nombre Completo" required
+            value={nombres} onChange={(e) => setNombres(e.target.value)}
+            className="p-2 border rounded"
+          />
+          <input 
+            type="email" placeholder="Correo Electrónico" required
+            value={email} onChange={(e) => setEmail(e.target.value)}
+            className="p-2 border rounded"
+          />
+          <input 
+            type="password" placeholder="Contraseña para el usuario" required
+            value={password} onChange={(e) => setPassword(e.target.value)}
+            className="p-2 border rounded"
+          />
+          <select 
+            value={rol} onChange={(e) => setRol(e.target.value)}
+            className="p-2 border rounded"
           >
-            + Registrar Nuevo
-          </button>
+            <option value="Vendedor">Vendedor</option>
+            <option value="Supervisor">Supervisor</option>
+            <option value="Administrador">Administrador</option>
+          </select>
         </div>
+        <button 
+          type="submit" disabled={loading}
+          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+        >
+          {loading ? 'Grabando...' : 'Grabar Nuevo Usuario'}
+        </button>
+      </form>
 
-        <div className="bg-white rounded-[45px] shadow-2xl overflow-hidden border border-slate-100">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-900 text-white text-[10px] uppercase font-black tracking-widest">
-                  <th className="p-8">Colaborador</th>
-                  <th className="p-8">Correo Electrónico</th>
-                  <th className="p-8 text-center">Cargo / Rol</th>
-                  <th className="p-8 text-center">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50 font-bold">
-                {loading ? (
-                  <tr><td colSpan={4} className="p-24 text-center text-slate-300 font-black uppercase animate-pulse">Cargando Empleados...</td></tr>
-                ) : usuarios.length === 0 ? (
-                  <tr><td colSpan={4} className="p-24 text-center text-slate-200 font-black uppercase">No se encontraron registros en 'empleados'</td></tr>
-                ) : (
-                  usuarios.map((u) => (
-                    <tr key={u.id} className="hover:bg-blue-50/40 transition-all group">
-                      <td className="p-8">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-slate-200 text-slate-600 rounded-2xl flex items-center justify-center font-black text-sm group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner">
-                            {u.nombres?.substring(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="text-slate-800 uppercase text-sm tracking-tight">{u.nombres}</div>
-                            <div className="text-[9px] text-slate-400 font-medium">REG: {new Date(u.creado_el).toLocaleDateString()}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-8 text-xs text-slate-500 font-medium italic lowercase">
-                        {u.email}
-                      </td>
-                      <td className="p-8 text-center">
-                        <span className="bg-slate-100 text-slate-500 px-4 py-2 rounded-xl text-[9px] uppercase font-black tracking-widest group-hover:bg-blue-100 group-hover:text-blue-700 transition-colors">
-                          {u.rol_empresa || 'Operario'}
-                        </span>
-                      </td>
-                      <td className="p-8">
-                        <div className="flex justify-center gap-3">
-                          <button 
-                            onClick={() => window.location.href = `/admin/usuarios/editar/${u.id}`}
-                            className="w-11 h-11 bg-white border border-slate-100 flex items-center justify-center rounded-2xl shadow-sm hover:bg-blue-600 hover:text-white transition-all text-lg"
-                            title="Editar"
-                          >
-                            ✏️
-                          </button>
-                          <button 
-                            onClick={() => eliminarUsuario(u.id, u.nombres)}
-                            className="w-11 h-11 bg-white border border-slate-100 flex items-center justify-center rounded-2xl shadow-sm hover:bg-red-600 hover:text-white transition-all text-lg"
-                            title="Eliminar"
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {/* Tabla de Resultados */}
+      <div className="bg-white rounded-xl shadow-md overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="p-4">Nombre</th>
+              <th className="p-4">Email</th>
+              <th className="p-4">Rol</th>
+            </tr>
+          </thead>
+          <tbody>
+            {usuarios.map((u: any) => (
+              <tr key={u.id} className="border-t">
+                <td className="p-4">{u.nombres}</td>
+                <td className="p-4">{u.email}</td>
+                <td className="p-4">{u.rol_empresa}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )
