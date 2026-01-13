@@ -1,5 +1,5 @@
 'use client'
-// VERSION 2.1 - CORRECCIÓN FOTOS Y GPS
+// VERSION 2.2 - FIX FOTOS CLICABLES Y GPS
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import AdminNav from '@/components/AdminNav'
@@ -72,37 +72,39 @@ export default function ReporteAdministrativo() {
 
   const totalHorasRango = filas.reduce((acc, curr) => acc + calcularHorasNum(curr.entrada, curr.salida), 0)
 
-  // Función auxiliar para renderizar Celda de Registro (Entrada o Salida)
-  const RenderRegistro = ({ reg, label }: { reg: any, label: string }) => {
-    if (!reg) return <span className="text-red-400 text-[9px] font-black italic">PENDIENTE</span>;
-    
+  // COMPONENTE PARA RENDERIZAR FOTO Y GPS
+  const CeldaInfo = ({ registro, tipo }: { registro: any, tipo: string }) => {
+    if (!registro) return <span className="text-slate-300 text-[10px] italic">No registrado</span>;
+
+    const googleMapsUrl = `https://www.google.com/maps?q=${registro.latitud},${registro.longitud}`;
+
     return (
       <div className="flex flex-col items-center gap-2">
-        <span className={`font-bold text-sm ${label === 'ENTRADA' ? 'text-blue-600' : 'text-orange-600'}`}>
-          {new Date(reg.fecha_hora).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        <span className={`font-bold text-xs ${tipo === 'entrada' ? 'text-blue-600' : 'text-orange-600'}`}>
+          {new Date(registro.fecha_hora).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           {/* FOTO CLICABLE */}
-          {reg.foto_url ? (
-            <a href={reg.foto_url} target="_blank" rel="noopener noreferrer" className="hover:opacity-75 transition-opacity">
+          {registro.foto_url ? (
+            <a href={registro.foto_url} target="_blank" rel="noreferrer" className="block hover:scale-105 transition-transform">
               <img 
-                src={reg.foto_url} 
-                className="w-10 h-10 rounded-lg object-cover border-2 border-slate-200 shadow-sm" 
-                alt={`Foto ${label}`} 
+                src={registro.foto_url} 
+                alt="Foto" 
+                className="w-10 h-10 rounded-lg object-cover border-2 border-slate-200 shadow-sm"
               />
             </a>
           ) : (
-            <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-[8px] text-slate-400">SIN FOTO</div>
+            <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-[8px] text-slate-400">Sin foto</div>
           )}
 
-          {/* GPS UBICACIÓN */}
-          {reg.latitud && reg.longitud && (
+          {/* LINK GPS */}
+          {registro.latitud && (
             <a 
-              href={`https://www.google.com/maps?q=${reg.latitud},${reg.longitud}`} 
+              href={googleMapsUrl} 
               target="_blank" 
-              rel="noopener noreferrer"
-              className="bg-white border border-slate-200 p-2 rounded-lg hover:bg-slate-50 transition-colors shadow-sm flex items-center justify-center"
-              title="Ver en Google Maps"
+              rel="noreferrer"
+              className="bg-white p-2 rounded-lg shadow-sm border border-slate-200 hover:bg-slate-50 text-lg"
+              title="Ver ubicación en mapa"
             >
               📍
             </a>
@@ -110,7 +112,7 @@ export default function ReporteAdministrativo() {
         </div>
       </div>
     );
-  }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
@@ -149,15 +151,17 @@ export default function ReporteAdministrativo() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr><td colSpan={5} className="p-20 text-center animate-pulse font-black text-slate-400">CARGANDO...</td></tr>
-              ) : filas.length === 0 ? (
-                <tr><td colSpan={5} className="p-20 text-center text-slate-300 font-bold">SIN REGISTROS</td></tr>
               ) : (
                 filas.map((r, i) => (
                   <tr key={i} className="hover:bg-blue-50/30 transition-colors">
                     <td className="p-6 font-black text-xs uppercase">{r.nombre}</td>
                     <td className="p-6 text-center text-[10px] font-bold text-slate-400">{r.fecha}</td>
-                    <td className="p-6"><RenderRegistro reg={r.entrada} label="ENTRADA" /></td>
-                    <td className="p-6"><RenderRegistro reg={r.salida} label="SALIDA" /></td>
+                    <td className="p-6 text-center">
+                      <CeldaInfo registro={r.entrada} tipo="entrada" />
+                    </td>
+                    <td className="p-6 text-center">
+                      <CeldaInfo registro={r.salida} tipo="salida" />
+                    </td>
                     <td className="p-6 text-center">
                       <span className="px-3 py-1 rounded-lg bg-slate-900 text-white font-black text-[10px]">
                         {calcularHorasNum(r.entrada, r.salida).toFixed(2)} hrs
