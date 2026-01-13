@@ -1,5 +1,5 @@
 'use client'
-// VERSION 2.5 - FIX BASE64 Y GPS INDEPENDIENTE
+// VERSION 2.6 - FIX DEFINITIVO GPS LINKS
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import AdminNav from '@/components/AdminNav'
@@ -66,7 +66,6 @@ export default function ReporteAdministrativo() {
     return Math.max(0, ms / (1000 * 60 * 60))
   }
 
-  // FUNCIÓN PARA ABRIR FOTOS BASE64 EN VENTANA NUEVA
   const abrirFoto = (fotoUrl: string) => {
     const nuevaVentana = window.open();
     if (nuevaVentana) {
@@ -75,11 +74,13 @@ export default function ReporteAdministrativo() {
     }
   };
 
+  // CELDA DE INFORMACIÓN CON LINK DE GOOGLE MAPS CORREGIDO
   const CeldaInfo = ({ registro, tipo }: { registro: any, tipo: string }) => {
     if (!registro) return <span className="text-slate-300 text-[10px]">--</span>;
 
-    // URL GPS con formato limpio para Google Maps
-    const urlMapa = "https://www.google.com/maps?q=" + registro.latitud + "," + registro.longitud;
+    // FORMATO DE URL PARA GOOGLE MAPS (VERIFICADO)
+    // Usamos el formato https://www.google.com/maps/search/?api=1&query=LAT,LON
+    const urlMapa = `https://www.google.com/maps/search/?api=1&query=${registro.latitud},${registro.longitud}`;
 
     return (
       <div className="flex flex-col items-center justify-center gap-2">
@@ -88,7 +89,6 @@ export default function ReporteAdministrativo() {
         </span>
         
         <div className="flex gap-4 items-center bg-slate-50 p-2 rounded-2xl border border-slate-100">
-          {/* FOTO MINIATURA CON CLIC CORREGIDO */}
           {registro.foto_url ? (
             <button 
               onClick={() => abrirFoto(registro.foto_url)}
@@ -104,17 +104,19 @@ export default function ReporteAdministrativo() {
             <div className="w-12 h-12 bg-slate-200 rounded-lg flex items-center justify-center text-[8px] text-slate-500">NO FOTO</div>
           )}
 
-          {/* LINK GPS - Asegurando visibilidad */}
-          {registro.latitud && (
+          {/* LINK GPS CORREGIDO */}
+          {registro.latitud && registro.longitud ? (
             <a 
               href={urlMapa} 
               target="_blank" 
               rel="noreferrer"
-              className="text-2xl hover:scale-125 transition-transform"
-              title="Ver en Google Maps"
+              className="text-2xl hover:scale-125 transition-all p-1 bg-white rounded-lg shadow-sm border border-slate-200"
+              title="Ver ubicación en Google Maps"
             >
               📍
             </a>
+          ) : (
+            <span className="text-xs opacity-20">📍</span>
           )}
         </div>
       </div>
