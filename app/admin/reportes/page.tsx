@@ -1,5 +1,5 @@
 'use client'
-// VERSION 2.6 - FIX DEFINITIVO GPS LINKS
+// VERSION 3.0 - FIX DEFINITIVO GPS LINKS
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import AdminNav from '@/components/AdminNav'
