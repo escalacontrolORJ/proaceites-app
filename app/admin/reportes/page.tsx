@@ -190,4 +190,4 @@ export default function ReporteAdministrativo() {
       </div>
     </div>
   )
-}
+}// fin de archivo
