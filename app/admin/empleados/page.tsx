@@ -8,9 +8,7 @@ export default function MarcadoAsistencia() {
   const [estadosAsistencia, setEstadosAsistencia] = useState<Record<string, any>>({})
   const [busqueda, setBusqueda] = useState('')
 
-  useEffect(() => {
-    fetchEmpleados()
-  }, [])
+  useEffect(() => { fetchEmpleados() }, [])
 
   async function fetchEmpleados() {
     const { data } = await supabase.from('empleados').select('*').order('nombres')
@@ -20,7 +18,7 @@ export default function MarcadoAsistencia() {
     }
   }
 
-  // Buscamos el ÚLTIMO registro absoluto (sin importar la fecha) para saber qué botón mostrar
+  // Lógica Clave: Busca el último registro histórico, sin importar si fue hoy o ayer
   async function fetchUltimosMovimientos(lista: any[]) {
     const estados: Record<string, any> = {}
     for (const emp of lista) {
@@ -40,7 +38,6 @@ export default function MarcadoAsistencia() {
     setLoading(true)
     const ahora = new Date()
     
-    // Captura de GPS para el reporte
     let urlMapa = "Sin GPS"
     try {
       const pos: any = await new Promise((res, rej) => 
@@ -60,32 +57,30 @@ export default function MarcadoAsistencia() {
 
     if (!error) {
       alert(`✅ ${tipo.toUpperCase()} registrado para ${empleado.nombres}`)
-      await fetchUltimosMovimientos(empleados) // Actualizar botones
+      await fetchUltimosMovimientos(empleados) 
     } else {
       alert("Error: " + error.message)
     }
     setLoading(false)
   }
 
-  const filtrados = empleados.filter(e => e.nombres.toLowerCase().includes(busqueda.toLowerCase()))
-
   return (
     <div className="p-6 bg-gray-50 min-h-screen text-black font-sans">
       <div className="max-w-md mx-auto">
         <h1 className="text-2xl font-black text-blue-900 uppercase mb-2 tracking-tighter">Panel de Marcado</h1>
-        <p className="text-[10px] font-bold text-gray-400 uppercase mb-6">Modo Pruebas: Múltiples registros permitidos</p>
+        <p className="text-[10px] font-bold text-gray-400 uppercase mb-6">Modo Libre: Múltiples registros permitidos</p>
 
         <input 
           type="text" 
           placeholder="Buscar empleado..." 
-          className="w-full p-4 rounded-2xl border-none shadow-sm mb-6 text-sm"
+          className="w-full p-4 rounded-2xl border border-gray-100 shadow-sm mb-6 text-sm outline-none focus:ring-2 focus:ring-blue-500"
           onChange={(e) => setBusqueda(e.target.value)}
         />
 
         <div className="grid gap-4">
-          {filtrados.map(emp => {
+          {empleados.filter(e => e.nombres.toLowerCase().includes(busqueda.toLowerCase())).map(emp => {
             const ultimo = estadosAsistencia[emp.id]
-            // Si el último fue ingreso, mostramos salida. En cualquier otro caso, ingreso.
+            // Si el último registro fue 'ingreso', toca marcar 'salida'. En cualquier otro caso, 'ingreso'.
             const esSalida = ultimo?.tipo_registro === 'ingreso'
 
             return (
@@ -95,7 +90,7 @@ export default function MarcadoAsistencia() {
                     <h2 className="font-black text-sm uppercase">{emp.nombres}</h2>
                     <p className="text-[9px] text-gray-400 font-bold uppercase">{emp.rol_empresa}</p>
                   </div>
-                  <span className={`text-[8px] font-black px-2 py-1 rounded-full uppercase ${esSalida ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                  <span className={`text-[8px] font-black px-2 py-1 rounded-full uppercase ${esSalida ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
                     {esSalida ? 'En Turno' : 'Fuera'}
                   </span>
                 </div>
@@ -105,14 +100,14 @@ export default function MarcadoAsistencia() {
                   onClick={() => registrar(emp, esSalida ? 'salida' : 'ingreso')}
                   className={`w-full py-4 rounded-2xl font-black text-xs uppercase text-white shadow-lg transition-transform active:scale-95 ${
                     esSalida ? 'bg-orange-500 shadow-orange-100' : 'bg-blue-600 shadow-blue-100'
-                  }`}
+                  } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   {loading ? 'Cargando...' : esSalida ? '🔔 Marcar Salida' : '⚡ Marcar Ingreso'}
                 </button>
                 
                 {ultimo && (
                   <p className="text-center text-[8px] mt-3 text-gray-300 font-bold uppercase">
-                    Último: {ultimo.tipo_registro} - {new Date(ultimo.fecha_hora).toLocaleTimeString()}
+                    Último: {ultimo.tipo_registro} ({new Date(ultimo.fecha_hora).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
                   </p>
                 )}
               </div>
