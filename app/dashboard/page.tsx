@@ -9,28 +9,19 @@ export default function DashboardUsuario() {
   const [loading, setLoading] = useState(true)
   const [procesando, setProcesando] = useState(false)
   
-  // Estados para GPS y Cámara
   const [ubicacionActual, setUbicacionActual] = useState<string | null>(null)
-  const [errorGps, setErrorGps] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
 
   useEffect(() => {
     getUsuarioYDatos()
-    
-    // Iniciar el rastreo del GPS apenas cargue la página
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        const url = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
-        setUbicacionActual(url);
-        setErrorGps(null);
+        setUbicacionActual(`https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`);
       },
-      (err) => {
-        setErrorGps("GPS DESACTIVADO O SIN PERMISO");
-      },
+      (err) => console.error("Error GPS:", err),
       { enableHighAccuracy: true }
     );
-
     return () => {
       if (stream) stream.getTracks().forEach(t => t.stop());
       navigator.geolocation.clearWatch(watchId);
@@ -38,26 +29,13 @@ export default function DashboardUsuario() {
   }, [])
 
   async function getUsuarioYDatos() {
-    setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    
     if (user) {
       setUser(user)
-      const { data: emp } = await supabase
-        .from('empleados')
-        .select('*')
-        .eq('email', user.email)
-        .maybeSingle()
-      
+      const { data: emp } = await supabase.from('empleados').select('*').eq('email', user.email).maybeSingle()
       if (emp) {
         setEmpleado(emp)
-        const { data: mov } = await supabase
-          .from('asistencia')
-          .select('*')
-          .eq('empleado_id', emp.id)
-          .order('fecha_hora', { ascending: false })
-          .limit(1)
-          .maybeSingle()
+        const { data: mov } = await supabase.from('asistencia').select('*').eq('empleado_id', emp.id).order('fecha_hora', { ascending: false }).limit(1).maybeSingle()
         setUltimoMovimiento(mov)
         activarCamara()
       }
@@ -67,94 +45,77 @@ export default function DashboardUsuario() {
 
   const activarCamara = async () => {
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user', width: 400, height: 400 } 
-      })
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
       setStream(s)
       if (videoRef.current) videoRef.current.srcObject = s
-    } catch (err) {
-      console.error("Cámara bloqueada");
-    }
+    } catch (err) { alert("Activa la cámara para marcar."); }
   }
 
   const realizarMarcacion = async () => {
-    if (!ubicacionActual) {
-      alert("⚠️ ESPERANDO SEÑAL GPS... Por favor, asegúrate de estar en un lugar con recepción y haber aceptado los permisos.");
-      return;
-    }
-
+    if (!ubicacionActual) return alert("Esperando señal GPS...");
     setProcesando(true)
     
     try {
-      // 1. CAPTURAR FOTO
-      let fotoBase64 = null
+      // CAPTURA DE FOTO PEQUEÑA (Para no saturar la base de datos)
+      let fotoSmall = null
       if (videoRef.current) {
         const canvas = document.createElement('canvas')
-        canvas.width = 400
-        canvas.height = 400
-        canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0, 400, 400)
-        fotoBase64 = canvas.toDataURL('image/jpeg', 0.6)
+        canvas.width = 200; canvas.height = 200; // Tamaño reducido
+        canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0, 200, 200)
+        fotoSmall = canvas.toDataURL('image/jpeg', 0.4) // Calidad baja
       }
 
       const tipo = ultimoMovimiento?.tipo_registro === 'ingreso' ? 'salida' : 'ingreso'
-      
-      // 2. GUARDAR EN TABLA ASISTENCIA
-      const { error } = await supabase.from('asistencia').insert([{
+      const payload = {
         empleado_id: empleado.id,
         nombres: empleado.nombres,
         tipo_registro: tipo,
         fecha_hora: new Date().toISOString(),
         fecha: new Date().toISOString().split('T')[0],
-        ubicacion: ubicacionActual, // Usamos la que el watchPosition ya encontró
-        foto_url: fotoBase64
-      }])
-
-      if (!error) {
-        alert(`✅ ${tipo.toUpperCase()} REGISTRADO CON ÉXITO`);
-        window.location.reload();
-      } else {
-        throw error;
+        ubicacion: ubicacionActual,
+        foto_url: fotoSmall
       }
-    } catch (error: any) {
-      alert("Error: " + error.message);
+
+      const { error } = await supabase.from('asistencia').insert([payload])
+
+      if (error) {
+        console.error("Detalle del error:", error);
+        alert(`ERROR DE BASE DE DATOS: ${error.message}\nCódigo: ${error.code}`);
+      } else {
+        alert(`✅ ${tipo.toUpperCase()} GUARDADO CORRECTAMENTE`);
+        window.location.reload();
+      }
+    } catch (e: any) {
+      alert("Error inesperado: " + e.message);
     } finally {
       setProcesando(false)
     }
   }
 
   if (loading) return <div className="p-20 text-center font-black">CARGANDO...</div>
-  if (!empleado) return <div className="p-20 text-center text-red-500 font-black">EMPLEADO NO REGISTRADO CON ESTE EMAIL</div>
+  if (!empleado) return <div className="p-20 text-center">No estás en la lista de empleados.</div>
 
   return (
-    <div className="min-h-screen bg-white p-4 flex flex-col items-center text-black">
+    <div className="min-h-screen bg-white p-6 flex flex-col items-center text-black">
       <div className="w-full max-w-md">
-        <header className="mb-4">
-          <h1 className="text-2xl font-black uppercase">{empleado.nombres}</h1>
-          <div className="flex items-center gap-2 mt-2">
-            <div className={`w-3 h-3 rounded-full ${ubicacionActual ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-            <p className="text-[10px] font-black uppercase">
-              {ubicacionActual ? 'GPS LISTO' : errorGps || 'BUSCANDO GPS...'}
-            </p>
-          </div>
-        </header>
+        <h1 className="text-2xl font-black uppercase mb-1">{empleado.nombres}</h1>
+        <p className={`text-[10px] font-black mb-6 ${ubicacionActual ? 'text-green-500' : 'text-red-500'}`}>
+          {ubicacionActual ? '📍 GPS CONECTADO' : '⌛ BUSCANDO UBICACIÓN...'}
+        </p>
 
-        <div className="aspect-square w-full bg-gray-100 rounded-[40px] overflow-hidden mb-6 shadow-xl border-4 border-gray-50">
+        <div className="aspect-square bg-gray-100 rounded-[40px] overflow-hidden mb-6 border-4 border-blue-900">
           <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />
         </div>
 
         <button 
           disabled={procesando || !ubicacionActual}
           onClick={realizarMarcacion}
-          className={`w-full py-6 rounded-[30px] font-black text-sm uppercase text-white shadow-2xl transition-all ${
+          className={`w-full py-6 rounded-[30px] font-black text-white shadow-2xl ${
             ultimoMovimiento?.tipo_registro === 'ingreso' ? 'bg-orange-500' : 'bg-blue-900'
-          } ${(procesando || !ubicacionActual) ? 'opacity-30' : 'active:scale-95'}`}
+          } ${procesando || !ubicacionActual ? 'opacity-30' : 'active:scale-95'}`}
         >
-          {procesando ? 'GUARDANDO...' : !ubicacionActual ? 'ESPERANDO GPS...' : ultimoMovimiento?.tipo_registro === 'ingreso' ? 'Marcar Salida' : 'Marcar Ingreso'}
+          {procesando ? 'GUARDANDO...' : ultimoMovimiento?.tipo_registro === 'ingreso' ? 'MARCAR SALIDA' : 'MARCAR INGRESO'}
         </button>
-
-        <p className="mt-4 text-[9px] text-gray-400 text-center font-bold uppercase">
-          Si el botón no se activa, revisa que los permisos de ubicación estén habilitados en tu navegador.
-        </p>
       </div>
     </div>
   )
