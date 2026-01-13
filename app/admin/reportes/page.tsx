@@ -20,12 +20,12 @@ export default function ReporteAdministrativo() {
   async function fetchData() {
     setLoading(true)
     try {
-      // 1. Obtener empleados
+      // 1. Obtener lista de empleados para el mapa de nombres
       const { data: emps } = await supabase.from('empleados').select('id, nombres')
       setEmpleados(emps || [])
       const nombresMap = Object.fromEntries(emps?.map(e => [e.id, e.nombres]) || [])
 
-      // 2. Consultar asistencias
+      // 2. Consultar asistencias con filtros
       let query = supabase
         .from('asistencia')
         .select('*')
@@ -39,7 +39,7 @@ export default function ReporteAdministrativo() {
 
       const { data: asist } = await query
 
-      // 3. Agrupar entrada y salida por día
+      // 3. Agrupar entrada y salida por día y empleado
       const agrupados: Record<string, any> = {}
       asist?.forEach(reg => {
         const llave = `${reg.empleado_id}-${reg.fecha}`
@@ -51,8 +51,13 @@ export default function ReporteAdministrativo() {
             salida: null
           }
         }
-        if (reg.tipo_registro === 'ingreso') agrupados[llave].entrada = reg
-        else if (reg.tipo_registro === 'salida') agrupados[llave].salida = reg
+        
+        // Asignar según el tipo de registro
+        if (reg.tipo_registro === 'ingreso') {
+          agrupados[llave].entrada = reg
+        } else if (reg.tipo_registro === 'salida') {
+          agrupados[llave].salida = reg
+        }
       })
 
       setFilas(Object.values(agrupados))
@@ -63,12 +68,14 @@ export default function ReporteAdministrativo() {
     }
   }
 
+  // Función para calcular horas entre entrada y salida
   const calcularHorasNum = (entrada: any, salida: any) => {
     if (!entrada || !salida) return 0
     const ms = new Date(salida.fecha_hora).getTime() - new Date(entrada.fecha_hora).getTime()
     return Math.max(0, ms / (1000 * 60 * 60))
   }
 
+  // Cálculo del total acumulado del periodo
   const totalHorasRango = filas.reduce((acc, curr) => acc + calcularHorasNum(curr.entrada, curr.salida), 0)
 
   return (
@@ -86,16 +93,28 @@ export default function ReporteAdministrativo() {
               className="w-full p-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-blue-500 font-bold outline-none transition-all"
             >
               <option value="TODOS">👥 TODOS LOS EMPLEADOS</option>
-              {empleados.map(e => <option key={e.id} value={e.id}>{e.nombres}</option>)}
+              {empleados.map(e => (
+                <option key={e.id} value={e.id}>{e.nombres}</option>
+              ))}
             </select>
           </div>
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Desde</label>
-            <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="w-full p-4 rounded-2xl bg-slate-50 font-bold" />
+            <input 
+              type="date" 
+              value={fechaDesde} 
+              onChange={(e) => setFechaDesde(e.target.value)} 
+              className="w-full p-4 rounded-2xl bg-slate-50 font-bold" 
+            />
           </div>
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Hasta</label>
-            <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="w-full p-4 rounded-2xl bg-slate-50 font-bold" />
+            <input 
+              type="date" 
+              value={fechaHasta} 
+              onChange={(e) => setFechaHasta(e.target.value)} 
+              className="w-full p-4 rounded-2xl bg-slate-50 font-bold" 
+            />
           </div>
         </div>
 
@@ -113,26 +132,46 @@ export default function ReporteAdministrativo() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={5} className="p-20 text-center animate-pulse font-black text-slate-400">CARGANDO DATOS...</td></tr>
-              ) : filas.length === 0 ? (
-                <tr><td colSpan={5} className="p-20 text-center text-slate-300 font-bold">SIN REGISTROS EN ESTE RANGO</td></tr>
-              ) : filas.map((r, i) => (
-                <tr key={i} className="hover:bg-blue-50/30 transition-colors">
-                  <td className="p-6 font-black text-xs uppercase">{r.nombre}</td>
-                  <td className="p-6 text-center text-[10px] font-bold text-slate-400">{r.fecha}</td>
-                  <td className="p-6 text-center">
-                    {r.entrada ? <span className="text-blue-600 font-bold">{new Date(r.entrada.fecha_hora).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span> : '--'}
-                  </td>
-                  <td className="p-6 text-center">
-                    {r.salida ? <span className="text-orange-600 font-bold">{new Date(r.salida.fecha_hora).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span> : <span className="text-red-400 text-[9px] font-black">PENDIENTE</span>}
-                  </td>
-                  <td className="p-6 text-center">
-                    <span className="px-3 py-1 rounded-lg bg-slate-900 text-white font-black text-[10px]">
-                      {calcularHorasNum(r.entrada, r.salida).toFixed(2)} hrs
-                    </span>
+                <tr>
+                  <td colSpan={5} className="p-20 text-center animate-pulse font-black text-slate-400">
+                    CARGANDO DATOS...
                   </td>
                 </tr>
-              ))}
+              ) : filas.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-20 text-center text-slate-300 font-bold">
+                    SIN REGISTROS EN ESTE RANGO
+                  </td>
+                </tr>
+              ) : (
+                filas.map((r, i) => (
+                  <tr key={i} className="hover:bg-blue-50/30 transition-colors">
+                    <td className="p-6 font-black text-xs uppercase">{r.nombre}</td>
+                    <td className="p-6 text-center text-[10px] font-bold text-slate-400">{r.fecha}</td>
+                    <td className="p-6 text-center">
+                      {r.entrada ? (
+                        <span className="text-blue-600 font-bold">
+                          {new Date(r.entrada.fecha_hora).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      ) : '--'}
+                    </td>
+                    <td className="p-6 text-center">
+                      {r.salida ? (
+                        <span className="text-orange-600 font-bold">
+                          {new Date(r.salida.fecha_hora).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      ) : (
+                        <span className="text-red-400 text-[9px] font-black">PENDIENTE</span>
+                      )}
+                    </td>
+                    <td className="p-6 text-center">
+                      <span className="px-3 py-1 rounded-lg bg-slate-900 text-white font-black text-[10px]">
+                        {calcularHorasNum(r.entrada, r.salida).toFixed(2)} hrs
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
