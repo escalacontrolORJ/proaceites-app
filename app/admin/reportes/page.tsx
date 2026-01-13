@@ -1,5 +1,5 @@
 'use client'
-// VERSION 3.4 - REPARACIÓN DEFINITIVA ICONO GPS
+// VERSION 3.5 - FIX INTERACCIÓN CLIC Y URL UNIVERSAL
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import AdminNav from '@/components/AdminNav'
@@ -63,39 +63,29 @@ export default function ReporteAdministrativo() {
   const abrirFoto = (fotoUrl: string) => {
     const nuevaVentana = window.open();
     if (nuevaVentana) {
-      nuevaVentana.document.write(`<img src="${fotoUrl}" style="max-width:100%; border-radius:20px; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1);" />`);
+      nuevaVentana.document.write(`<img src="${fotoUrl}" style="max-width:100%; border-radius:15px;" />`);
     }
   };
 
   const CeldaInfo = ({ registro, tipo }: { registro: any, tipo: string }) => {
-    if (!registro) return <span className="text-slate-300 text-[10px] font-bold">VACÍO</span>;
+    if (!registro) return <span className="text-slate-300 text-[10px]">--</span>;
 
-    // --- EXTRACCIÓN ROBUSTA DE COORDENADAS ---
-    let lat: any = null;
-    let lon: any = null;
     let urlMapa = "";
-
     const geo = registro.geolocalizacion;
 
     if (geo) {
-      // Caso 1: Es un objeto {x, y} (X=Lon, Y=Lat en Postgres Point)
-      if (typeof geo === 'object' && geo !== null) {
-        lat = geo.y;
-        lon = geo.x;
-      } 
-      // Caso 2: Es un string "(lon,lat)"
-      else if (typeof geo === 'string') {
-        const limpiar = geo.replace(/[()]/g, '').split(',');
-        if (limpiar.length === 2) {
-          lon = limpiar[0].trim();
-          lat = limpiar[1].trim();
-        }
+      let lat, lon;
+      if (typeof geo === 'object') {
+        lat = geo.y; lon = geo.x;
+      } else if (typeof geo === 'string') {
+        const p = geo.replace(/[()]/g, '').split(',');
+        lon = p[0]?.trim(); lat = p[1]?.trim();
       }
-    }
-
-    // Si tenemos coordenadas, armamos el link de Google Maps
-    if (lat && lon) {
-      urlMapa = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+      
+      if (lat && lon) {
+        // URL de búsqueda simple (La más compatible)
+        urlMapa = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+      }
     }
 
     return (
@@ -104,27 +94,29 @@ export default function ReporteAdministrativo() {
           {new Date(registro.fecha_hora).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
         
-        <div className="flex gap-2 items-center bg-white p-2 rounded-2xl border border-slate-100 shadow-sm">
+        <div className="flex gap-2 items-center bg-white p-2 rounded-2xl border border-slate-100 shadow-sm relative">
           {/* FOTO */}
           {registro.foto_url ? (
-            <button onClick={() => abrirFoto(registro.foto_url)} className="hover:scale-110 transition-transform">
+            <button 
+              onClick={() => abrirFoto(registro.foto_url)} 
+              className="z-10 hover:scale-105 transition-transform"
+            >
               <img src={registro.foto_url} className="w-10 h-10 rounded-lg object-cover border border-slate-100" alt="F" />
             </button>
-          ) : <div className="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center text-[8px] text-slate-300">N/A</div>}
+          ) : <div className="w-10 h-10 bg-slate-50 rounded-lg" />}
 
-          {/* GPS - ACTIVO SI urlMapa TIENE VALOR */}
+          {/* GPS - SE USA UNA ETIQUETA 'A' CON Z-INDEX ALTO */}
           {urlMapa ? (
             <a 
               href={urlMapa} 
               target="_blank" 
-              rel="noopener noreferrer"
-              className="w-10 h-10 flex items-center justify-center bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all text-xl cursor-pointer"
-              title="Abrir ubicación"
+              rel="noreferrer"
+              className="z-20 w-10 h-10 flex items-center justify-center bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-all text-xl cursor-pointer"
             >
               📍
             </a>
           ) : (
-            <div className="w-10 h-10 flex items-center justify-center bg-slate-100 text-slate-300 rounded-lg text-xl" title="Ubicación no disponible">
+            <div className="w-10 h-10 flex items-center justify-center bg-slate-100 text-slate-300 rounded-lg text-xl">
               📍
             </div>
           )}
@@ -138,42 +130,31 @@ export default function ReporteAdministrativo() {
       <AdminNav />
       <div className="max-w-7xl mx-auto p-4 md:p-10">
         
-        {/* FILTROS */}
         <div className="bg-white p-6 rounded-[35px] shadow-sm border border-slate-100 mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Empleado</label>
-            <select value={empleadoSeleccionado} onChange={(e) => setEmpleadoSeleccionado(e.target.value)} className="p-3 rounded-2xl bg-slate-50 font-bold border-none outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="TODOS">TODOS</option>
-              {empleados.map(e => <option key={e.id} value={e.id}>{e.nombres}</option>)}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Desde</label>
-            <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="p-3 rounded-2xl bg-slate-50 font-bold outline-none" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Hasta</label>
-            <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="p-3 rounded-2xl bg-slate-50 font-bold outline-none" />
-          </div>
+          <select value={empleadoSeleccionado} onChange={(e) => setEmpleadoSeleccionado(e.target.value)} className="p-3 rounded-2xl bg-slate-50 font-bold border-none outline-none">
+            <option value="TODOS">TODOS LOS EMPLEADOS</option>
+            {empleados.map(e => <option key={e.id} value={e.id}>{e.nombres}</option>)}
+          </select>
+          <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="p-3 rounded-2xl bg-slate-50 font-bold outline-none" />
+          <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="p-3 rounded-2xl bg-slate-50 font-bold outline-none" />
         </div>
 
-        {/* TABLA PRINCIPAL */}
         <div className="bg-white rounded-[40px] shadow-2xl overflow-hidden border border-slate-100">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="bg-slate-900 text-white text-[10px] uppercase font-black tracking-[0.2em]">
+                <tr className="bg-slate-900 text-white text-[10px] uppercase font-black tracking-widest">
                   <th className="p-6">Colaborador</th>
                   <th className="p-6 text-center">Fecha</th>
-                  <th className="p-6 text-center">Entrada (GPS)</th>
-                  <th className="p-6 text-center">Salida (GPS)</th>
-                  <th className="p-6 text-center">Horas</th>
+                  <th className="p-6 text-center">Entrada</th>
+                  <th className="p-6 text-center">Salida</th>
+                  <th className="p-6 text-center">Total</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 font-bold">
                 {filas.map((r, i) => (
-                  <tr key={i} className="hover:bg-blue-50/30 transition-colors font-bold">
-                    <td className="p-6 text-xs uppercase text-slate-600">{r.nombre}</td>
+                  <tr key={i} className="hover:bg-blue-50/20 transition-colors">
+                    <td className="p-6 text-xs uppercase text-slate-700">{r.nombre}</td>
                     <td className="p-6 text-center text-[10px] text-slate-400">{r.fecha}</td>
                     <td className="p-6"><CeldaInfo registro={r.entrada} tipo="entrada" /></td>
                     <td className="p-6"><CeldaInfo registro={r.salida} tipo="salida" /></td>
