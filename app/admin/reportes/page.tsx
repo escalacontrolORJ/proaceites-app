@@ -21,12 +21,12 @@ export default function ReporteAdministrativo() {
   async function fetchData() {
     setLoading(true)
     try {
-      // 1. Obtener lista de empleados para el mapa de nombres
+      // 1. Obtener lista de empleados
       const { data: emps } = await supabase.from('empleados').select('id, nombres')
       setEmpleados(emps || [])
       const nombresMap = Object.fromEntries(emps?.map(e => [e.id, e.nombres]) || [])
 
-      // 2. Consultar asistencias con filtros
+      // 2. Consultar asistencias incluyendo fotos y coordenadas
       let query = supabase
         .from('asistencia')
         .select('*')
@@ -40,7 +40,7 @@ export default function ReporteAdministrativo() {
 
       const { data: asist } = await query
 
-      // 3. Agrupar entrada y salida por día y empleado
+      // 3. Agrupar entrada y salida
       const agrupados: Record<string, any> = {}
       asist?.forEach(reg => {
         const llave = `${reg.empleado_id}-${reg.fecha}`
@@ -53,7 +53,6 @@ export default function ReporteAdministrativo() {
           }
         }
         
-        // Asignar según el tipo de registro
         if (reg.tipo_registro === 'ingreso') {
           agrupados[llave].entrada = reg
         } else if (reg.tipo_registro === 'salida') {
@@ -69,14 +68,12 @@ export default function ReporteAdministrativo() {
     }
   }
 
-  // Función para calcular horas entre entrada y salida
   const calcularHorasNum = (entrada: any, salida: any) => {
     if (!entrada || !salida) return 0
     const ms = new Date(salida.fecha_hora).getTime() - new Date(entrada.fecha_hora).getTime()
     return Math.max(0, ms / (1000 * 60 * 60))
   }
 
-  // Cálculo del total acumulado del periodo
   const totalHorasRango = filas.reduce((acc, curr) => acc + calcularHorasNum(curr.entrada, curr.salida), 0)
 
   return (
@@ -101,21 +98,11 @@ export default function ReporteAdministrativo() {
           </div>
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Desde</label>
-            <input 
-              type="date" 
-              value={fechaDesde} 
-              onChange={(e) => setFechaDesde(e.target.value)} 
-              className="w-full p-4 rounded-2xl bg-slate-50 font-bold" 
-            />
+            <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="w-full p-4 rounded-2xl bg-slate-50 font-bold" />
           </div>
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Hasta</label>
-            <input 
-              type="date" 
-              value={fechaHasta} 
-              onChange={(e) => setFechaHasta(e.target.value)} 
-              className="w-full p-4 rounded-2xl bg-slate-50 font-bold" 
-            />
+            <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="w-full p-4 rounded-2xl bg-slate-50 font-bold" />
           </div>
         </div>
 
@@ -126,45 +113,56 @@ export default function ReporteAdministrativo() {
               <tr>
                 <th className="p-6">Empleado</th>
                 <th className="p-6 text-center">Fecha</th>
-                <th className="p-6 text-center">Entrada</th>
+                <th className="p-6 text-center">Entrada (Foto/GPS)</th>
                 <th className="p-6 text-center">Salida</th>
                 <th className="p-6 text-center">Total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr>
-                  <td colSpan={5} className="p-20 text-center animate-pulse font-black text-slate-400">
-                    CARGANDO DATOS...
-                  </td>
-                </tr>
+                <tr><td colSpan={5} className="p-20 text-center animate-pulse font-black text-slate-400">CARGANDO...</td></tr>
               ) : filas.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="p-20 text-center text-slate-300 font-bold">
-                    SIN REGISTROS EN ESTE RANGO
-                  </td>
-                </tr>
+                <tr><td colSpan={5} className="p-20 text-center text-slate-300 font-bold">SIN REGISTROS</td></tr>
               ) : (
                 filas.map((r, i) => (
                   <tr key={i} className="hover:bg-blue-50/30 transition-colors">
                     <td className="p-6 font-black text-xs uppercase">{r.nombre}</td>
                     <td className="p-6 text-center text-[10px] font-bold text-slate-400">{r.fecha}</td>
-                    <td className="p-6 text-center">
-                      {r.entrada ? (
-                        <span className="text-blue-600 font-bold">
-                          {new Date(r.entrada.fecha_hora).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      ) : '--'}
+                    
+                    {/* ENTRADA CON FOTO Y GPS */}
+                    <td className="p-6">
+                      <div className="flex flex-col items-center gap-2">
+                        {r.entrada ? (
+                          <>
+                            <span className="text-blue-600 font-bold text-sm">
+                              {new Date(r.entrada.fecha_hora).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            <div className="flex gap-2">
+                              {r.entrada.foto_url && (
+                                <a href={r.entrada.foto_url} target="_blank" className="hover:scale-110 transition-transform">
+                                  <img src={r.entrada.foto_url} className="w-8 h-8 rounded-lg object-cover border shadow-sm" alt="Foto" />
+                                </a>
+                              )}
+                              {r.entrada.latitud && (
+                                <a 
+                                  href={`https://www.google.com/maps?q=${r.entrada.latitud},${r.entrada.longitud}`} 
+                                  target="_blank" 
+                                  className="bg-slate-100 p-1.5 rounded-lg text-lg"
+                                  title="Ver Ubicación"
+                                >
+                                  📍
+                                </a>
+                              )}
+                            </div>
+                          </>
+                        ) : '--'}
+                      </div>
                     </td>
-                    <td className="p-6 text-center">
-                      {r.salida ? (
-                        <span className="text-orange-600 font-bold">
-                          {new Date(r.salida.fecha_hora).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      ) : (
-                        <span className="text-red-400 text-[9px] font-black">PENDIENTE</span>
-                      )}
+
+                    <td className="p-6 text-center text-orange-600 font-bold">
+                      {r.salida ? new Date(r.salida.fecha_hora).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'PENDIENTE'}
                     </td>
+                    
                     <td className="p-6 text-center">
                       <span className="px-3 py-1 rounded-lg bg-slate-900 text-white font-black text-[10px]">
                         {calcularHorasNum(r.entrada, r.salida).toFixed(2)} hrs
@@ -177,12 +175,9 @@ export default function ReporteAdministrativo() {
           </table>
         </div>
 
-        {/* RESUMEN TOTAL */}
+        {/* RESUMEN */}
         <div className="bg-blue-600 p-8 rounded-[40px] text-white shadow-xl flex justify-between items-center">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Resumen del Periodo</p>
-            <p className="text-sm font-bold">{fechaDesde} al {fechaHasta}</p>
-          </div>
+          <div><p className="text-[10px] font-black uppercase tracking-widest opacity-70">Resumen del Periodo</p></div>
           <div className="text-right">
             <p className="text-[10px] font-black uppercase opacity-70 mb-1">Total Acumulado</p>
             <p className="text-4xl font-black">{totalHorasRango.toFixed(2)} <span className="text-xs">HRS</span></p>
