@@ -8,7 +8,6 @@ export default function ReporteAdministrativo() {
   const [empleados, setEmpleados] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Filtros
   const [fechaDesde, setFechaDesde] = useState(new Date().toISOString().split('T')[0])
   const [fechaHasta, setFechaHasta] = useState(new Date().toISOString().split('T')[0])
   const [empleadoSeleccionado, setEmpleadoSeleccionado] = useState('TODOS')
@@ -20,7 +19,7 @@ export default function ReporteAdministrativo() {
   async function fetchData() {
     setLoading(true)
     try {
-      // 1. Obtener lista de empleados
+      // 1. Obtener empleados
       const { data: emps } = await supabase.from('empleados').select('id, nombres')
       setEmpleados(emps || [])
       const nombresMap = Object.fromEntries(emps?.map(e => [e.id, e.nombres]) || [])
@@ -39,7 +38,7 @@ export default function ReporteAdministrativo() {
 
       const { data: asist } = await query
 
-      // 3. Agrupar entrada y salida
+      // 3. Agrupar datos
       const agrupados: Record<string, any> = {}
       asist?.forEach(reg => {
         const llave = `${reg.empleado_id}-${reg.fecha}`
@@ -57,7 +56,7 @@ export default function ReporteAdministrativo() {
 
       setFilas(Object.values(agrupados))
     } catch (error) {
-      console.error("Error cargando datos:", error)
+      console.error("Error:", error)
     } finally {
       setLoading(false)
     }
@@ -76,7 +75,6 @@ export default function ReporteAdministrativo() {
       <AdminNav />
       <div className="max-w-7xl mx-auto p-6 md:p-10">
         
-        {/* PANEL DE FILTROS */}
         <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 mb-8 grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Colaborador</label>
@@ -99,7 +97,6 @@ export default function ReporteAdministrativo() {
           </div>
         </div>
 
-        {/* TABLA DE RESULTADOS */}
         <div className="bg-white rounded-[40px] shadow-2xl overflow-hidden mb-8 border border-slate-100">
           <table className="w-full text-left">
             <thead className="bg-slate-900 text-white text-[10px] uppercase font-black tracking-widest">
@@ -113,9 +110,9 @@ export default function ReporteAdministrativo() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={5} className="p-20 text-center animate-pulse font-black text-slate-400">CARGANDO DATOS...</td></tr>
+                <tr><td colSpan={5} className="p-20 text-center animate-pulse font-black text-slate-400">CARGANDO...</td></tr>
               ) : filas.length === 0 ? (
-                <tr><td colSpan={5} className="p-20 text-center text-slate-300 font-bold">NO HAY REGISTROS</td></tr>
+                <tr><td colSpan={5} className="p-20 text-center text-slate-300 font-bold">SIN REGISTROS</td></tr>
               ) : filas.map((r, i) => (
                 <tr key={i} className="hover:bg-blue-50/30 transition-colors">
                   <td className="p-6 font-black text-xs uppercase">{r.nombre}</td>
@@ -137,15 +134,14 @@ export default function ReporteAdministrativo() {
           </table>
         </div>
 
-        {/* RESUMEN TOTAL */}
         <div className="bg-blue-600 p-8 rounded-[40px] text-white shadow-xl flex justify-between items-center">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Resumen del Periodo</p>
+            <p className="text-[10px] font-black uppercase opacity-70">Resumen del Periodo</p>
             <p className="text-sm font-bold">{fechaDesde} al {fechaHasta}</p>
           </div>
           <div className="text-right">
             <p className="text-[10px] font-black uppercase opacity-70 mb-1">Total Acumulado</p>
-            <p className="text-4xl font-black">{totalHorasRango.toFixed(2)} <span className="text-xs">HRS</span></p>
+            <p className="text-4xl font-black">{totalHorasRango.toFixed(2)} HRS</p>
           </div>
         </div>
       </div>
