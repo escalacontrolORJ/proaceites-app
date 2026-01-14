@@ -5,29 +5,44 @@ import { useRouter } from 'next/navigation'
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(false)
+  const [gpsReady, setGpsReady] = useState(false)
   const [status, setStatus] = useState('Iniciando sensores...')
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [coords, setCoords] = useState('')
   const [tipoSeleccionado, setTipoSeleccionado] = useState<'INGRESO' | 'SALIDA' | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
-  // 1. PEDIR GPS AL ENTRAR (FORZADO)
+  // 1. ACTIVACIÓN DE SENSORES AL ENTRAR
   useEffect(() => {
-    const pedirPermisos = () => {
-      navigator.geolocation.getCurrentPosition(
-        () => setStatus('GPS LISTO ✅'),
-        () => setStatus('ACTIVA TU GPS ⚠️'),
-        { enableHighAccuracy: true }
-      )
+    if (!("geolocation" in navigator)) {
+      setStatus('GPS NO SOPORTADO')
+      return
     }
-    pedirPermisos()
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`)
+        setGpsReady(true)
+        setStatus('SISTEMA LISTO ✅')
+      },
+      (err) => {
+        setStatus('ERROR: ACTIVA EL GPS ⚠️')
+        setGpsReady(false)
+      },
+      { enableHighAccuracy: true }
+    )
+
+    return () => navigator.geolocation.clearWatch(watchId)
   }, [])
 
-  const handleBotonClick = (tipo: 'INGRESO' | 'SALIDA') => {
-    setTipoSeleccionado(tipo)
-    // Forzamos el clic en el input oculto
-    if (fileInputRef.current) {
-      fileInputRef.current.click()
+  const activarCaptura = (tipo: 'INGRESO' | 'SALIDA') => {
+    if (!gpsReady) {
+      alert("Esperando señal de GPS...")
+      return
     }
+    setTipoSeleccionado(tipo)
+    // El clic solo se dispara si el GPS ya está listo
+    fileInputRef.current?.click()
   }
 
   const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,24 +50,25 @@ export default function DashboardPage() {
     if (!file || !tipoSeleccionado) return
 
     setLoading(true)
+    setStatus('SUBIENDO REGISTRO...')
+    
     try {
-      // Obtener coordenadas en el momento exacto
-      const pos: any = await new Promise((res) => {
-        navigator.geolocation.getCurrentPosition(res, () => res({coords:{latitude:0, longitude:0}}))
-      })
-      
-      const coords = `${pos.coords.latitude}, ${pos.coords.longitude}`
       const fileName = `${Date.now()}_${tipoSeleccionado}.jpg`
+      
+      // Subir Foto
+      const { error: upErr } = await supabase.storage
+        .from('fotos_asistencia')
+        .upload(fileName, file)
 
-      // Subir a Storage
-      const { error: upErr } = await supabase.storage.from('fotos_asistencia').upload(fileName, file)
       if (upErr) throw upErr
 
-      const { data: { publicUrl } } = supabase.storage.from('fotos_asistencia').getPublicUrl(fileName)
+      const { data: { publicUrl } } = supabase.storage
+        .from('fotos_asistencia')
+        .getPublicUrl(fileName)
 
-      // Guardar DB
+      // Guardar en DB
       const { data: { session } } = await supabase.auth.getSession()
-      await supabase.from('asistencia').insert([{ 
+      const { error: dbError } = await supabase.from('asistencia').insert([{ 
         usuario_id: session?.user.id,
         tipo: tipoSeleccionado,
         coordenadas: coords,
@@ -60,7 +76,9 @@ export default function DashboardPage() {
         fecha: new Date().toISOString()
       }])
 
-      alert(`REGISTRO DE ${tipoSeleccionado} EXITOSO`)
+      if (dbError) throw dbError
+
+      alert(`✅ ${tipoSeleccionado} REGISTRADO CORRECTAMENTE`)
       if (tipoSeleccionado === 'INGRESO') router.push('/admin/asistencia')
       
     } catch (err: any) {
@@ -68,15 +86,26 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
       setTipoSeleccionado(null)
+      setStatus('SISTEMA LISTO ✅')
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
   return (
-    <div className="min-h-screen bg-black p-6 flex flex-col justify-center items-center text-white">
-      <h1 className="text-4xl font-black mb-2 italic">PROACEITES</h1>
-      <p className="text-[10px] tracking-[4px] mb-12 text-blue-500 font-bold uppercase">{status}</p>
+    <div className="min-h-screen bg-slate-950 p-6 flex flex-col justify-center items-center text-white font-sans">
+      <header className="mb-12 text-center">
+        <h1 className="text-5xl font-black italic tracking-tighter mb-4">PROACEITES</h1>
+        
+        {/* INDICADOR DE ESTADO */}
+        <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border ${gpsReady ? 'border-green-500 bg-green-500/10' : 'border-orange-500 bg-orange-500/10 animate-pulse'}`}>
+          <div className={`w-2 h-2 rounded-full ${gpsReady ? 'bg-green-500' : 'bg-orange-500'}`}></div>
+          <span className="text-[10px] font-black uppercase tracking-[2px]">
+            {status}
+          </span>
+        </div>
+      </header>
 
-      {/* INPUT OCULTO CON CAPTURE FORZADO */}
+      {/* INPUT OCULTO CON FILTROS DE CÁMARA ESTRUCTURADOS */}
       <input 
         type="file" 
         accept="image/*" 
@@ -86,25 +115,38 @@ export default function DashboardPage() {
         onChange={handleCapture}
       />
 
-      <div className="w-full space-y-6 max-w-xs">
+      <div className="w-full max-w-xs space-y-6">
         <button 
-          onClick={() => handleBotonClick('INGRESO')}
-          className="w-full bg-green-600 p-10 rounded-3xl text-2xl font-black uppercase shadow-[0_0_30px_rgba(22,163,74,0.4)]"
+          onClick={() => activarCaptura('INGRESO')}
+          disabled={!gpsReady || loading}
+          className={`w-full p-10 rounded-[40px] text-2xl font-black uppercase transition-all shadow-2xl
+            ${gpsReady && !loading 
+              ? 'bg-emerald-500 shadow-emerald-500/20 active:scale-90 border-b-8 border-emerald-700' 
+              : 'bg-slate-800 text-slate-500 border-none opacity-50 cursor-not-allowed'}`}
         >
           📷 INGRESO
         </button>
 
         <button 
-          onClick={() => handleBotonClick('SALIDA')}
-          className="w-full bg-red-600 p-10 rounded-3xl text-2xl font-black uppercase shadow-[0_0_30px_rgba(220,38,38,0.4)]"
+          onClick={() => activarCaptura('SALIDA')}
+          disabled={!gpsReady || loading}
+          className={`w-full p-10 rounded-[40px] text-2xl font-black uppercase transition-all shadow-2xl
+            ${gpsReady && !loading 
+              ? 'bg-rose-500 shadow-rose-500/20 active:scale-90 border-b-8 border-rose-700' 
+              : 'bg-slate-800 text-slate-500 border-none opacity-50 cursor-not-allowed'}`}
         >
           🏁 SALIDA
         </button>
       </div>
 
+      <p className="mt-12 text-slate-600 text-[9px] font-bold uppercase tracking-[4px]">
+        {gpsReady ? `UBICACIÓN: ${coords}` : 'ESPERANDO COORDENADAS...'}
+      </p>
+
       {loading && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center text-center">
-          <p className="font-black text-2xl animate-bounce">SUBIENDO DATOS...</p>
+        <div className="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center">
+          <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="mt-6 font-black text-xl animate-pulse">SINCRONIZANDO CON LA NUBE...</p>
         </div>
       )}
     </div>
