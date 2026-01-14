@@ -1,22 +1,17 @@
 'use client'
-
-import React, { useState, useEffect } from 'react'
+/**
+ * SISTEMA DE GESTIÓN DE ASISTENCIA
+ * VERSION: V1.1 (Sincronizada con tabla empleados)
+ * MÓDULO: GESTIÓN DE USUARIOS
+ */
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import { useRouter } from 'next/navigation'
+import AdminNav from '@/components/AdminNav'
 
-export default function UsuariosPage() {
+export default function GestionUsuarios() {
   const [usuarios, setUsuarios] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [busqueda, setBusqueda] = useState('')
-  const [mostrarModal, setMostrarModal] = useState(false)
-  const [creando, setCreando] = useState(false)
-  const router = useRouter()
-
-  const [nuevoUsuario, setNuevoUsuario] = useState({
-    nombres: '',
-    email: '',
-    rol_empresa: 'Operario'
-  })
+  const [version] = useState("V1.1")
 
   useEffect(() => {
     fetchUsuarios()
@@ -25,175 +20,123 @@ export default function UsuariosPage() {
   async function fetchUsuarios() {
     setLoading(true)
     try {
+      // Consultamos las columnas exactas de tu archivo CSV
       const { data, error } = await supabase
         .from('empleados')
-        .select('*')
+        .select('id, nombres, email, rol_empresa, creado_el')
         .order('nombres', { ascending: true })
-      
-      if (data) setUsuarios(data)
-    } catch (error) {
-      console.error(error)
-    }
-    setLoading(false)
-  }
 
-  async function crearUsuario(e: React.FormEvent) {
-    e.preventDefault()
-    setCreando(true)
-    
-    // INSERTAR NOMBRE, EMAIL Y ROL
-    // No enviamos ID ni Cédula para evitar errores de restricción
-    const { error } = await supabase
-      .from('empleados')
-      .insert([{
-        nombres: nuevoUsuario.nombres,
-        email: nuevoUsuario.email.toLowerCase().trim(),
-        rol_empresa: nuevoUsuario.rol_empresa
-      }])
-
-    if (!error) {
-      setNuevoUsuario({ nombres: '', email: '', rol_empresa: 'Operario' })
-      setMostrarModal(false)
-      fetchUsuarios()
-    } else {
-      // Si sale error de "id", es que falta el valor por defecto en Supabase
-      alert('Error al crear: ' + error.message)
-    }
-    setCreando(false)
-  }
-
-  async function eliminarUsuario(id: string) {
-    if (confirm('¿Estás seguro de eliminar este usuario?')) {
-      const { error } = await supabase.from('empleados').delete().eq('id', id)
-      if (!error) fetchUsuarios()
+      if (error) throw error
+      setUsuarios(data || [])
+    } catch (error: any) {
+      console.error('Error Supabase:', error.message)
+      alert('Error al cargar: ' + error.message)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const usuariosFiltrados = usuarios.filter(u => 
-    u.nombres?.toLowerCase().includes(busqueda.toLowerCase()) ||
-    u.email?.toLowerCase().includes(busqueda.toLowerCase())
-  )
+  const eliminarUsuario = async (id: string, nombre: string) => {
+    if (confirm(`¿Estás seguro de que deseas eliminar a ${nombre}? Esta acción es permanente.`)) {
+      const { error } = await supabase
+        .from('empleados')
+        .delete()
+        .eq('id', id)
+
+      if (error) {
+        alert('No se pudo eliminar: ' + error.message)
+      } else {
+        setUsuarios(usuarios.filter(u => u.id !== id))
+      }
+    }
+  }
 
   return (
-    <div className="pb-20">
-      <header className="mb-6 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black text-blue-900 uppercase">Personal</h1>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gestión con Email</p>
+    <div className="min-h-screen bg-slate-50 pb-20 font-sans">
+      <AdminNav />
+      
+      <div className="max-w-6xl mx-auto p-4 md:p-10">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
+          <div>
+            <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">Personal</h1>
+            <p className="text-slate-500 font-bold text-sm uppercase tracking-widest flex items-center gap-2">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+              Base de Datos Activa {version}
+            </p>
+          </div>
+          
+          <button 
+            onClick={() => window.location.href = '/admin/usuarios/nuevo'}
+            className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-xs shadow-xl hover:bg-blue-700 transition-all uppercase tracking-widest"
+          >
+            + Registrar Nuevo
+          </button>
         </div>
-        <button 
-          onClick={() => setMostrarModal(true)}
-          className="bg-blue-600 text-white w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all"
-        >
-          <span className="text-2xl">+</span>
-        </button>
-      </header>
 
-      <div className="mb-6">
-        <input 
-          type="text"
-          placeholder="Buscar por nombre o email..."
-          className="w-full p-4 rounded-2xl bg-white border border-slate-200 shadow-sm outline-none focus:border-blue-500 font-medium text-slate-600"
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-        />
-      </div>
-
-      <div className="space-y-3">
-        {loading ? (
-          <p className="text-center text-slate-400 font-bold animate-pulse py-10">CARGANDO...</p>
-        ) : (
-          usuariosFiltrados.map((u) => (
-            <div key={u.id} className="bg-white p-4 rounded-[25px] shadow-sm border border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="font-black text-slate-800 uppercase text-sm">{u.nombres}</h3>
-                <p className="text-[11px] text-blue-500 font-bold">{u.email}</p>
-                <div className="flex gap-2 mt-1 items-center">
-                  <span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase bg-blue-50 text-blue-600">
-                    {u.rol_empresa || 'Operario'}
-                  </span>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => router.push(`/admin/empleados/editar/${u.id}`)}
-                  className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-colors"
-                >
-                  ✏️
-                </button>
-                <button 
-                  onClick={() => eliminarUsuario(u.id)}
-                  className="p-2 text-red-400 hover:bg-red-50 rounded-xl transition-colors"
-                >
-                  🗑️
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {mostrarModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-[35px] p-8 shadow-2xl animate-in slide-in-from-bottom">
-            <h2 className="text-xl font-black text-slate-800 uppercase mb-6">Nuevo Usuario</h2>
-            <form onSubmit={crearUsuario} className="space-y-4">
-              
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nombre Completo</label>
-                <input 
-                  required
-                  className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:bg-white focus:ring-2 ring-blue-500 transition-all font-bold text-slate-800"
-                  value={nuevoUsuario.nombres}
-                  onChange={e => setNuevoUsuario({...nuevoUsuario, nombres: e.target.value})}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Email de Acceso</label>
-                <input 
-                  type="email"
-                  required
-                  className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:bg-white focus:ring-2 ring-blue-500 transition-all font-bold text-slate-800"
-                  value={nuevoUsuario.email}
-                  placeholder="usuario@proaceites.com"
-                  onChange={e => setNuevoUsuario({...nuevoUsuario, email: e.target.value})}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Rol Asignado</label>
-                <select 
-                  className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:bg-white focus:ring-2 ring-blue-500 transition-all font-bold appearance-none text-slate-800"
-                  value={nuevoUsuario.rol_empresa}
-                  onChange={e => setNuevoUsuario({...nuevoUsuario, rol_empresa: e.target.value})}
-                >
-                  <option value="Operario">👷 Operario</option>
-                  <option value="Vendedor">💼 Vendedor</option>
-                  <option value="Supervisor">🔑 Supervisor</option>
-                </select>
-              </div>
-
-              <div className="pt-4 flex gap-3">
-                <button 
-                  type="button"
-                  onClick={() => setMostrarModal(false)}
-                  className="flex-1 py-4 text-slate-400 font-bold uppercase text-xs"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit"
-                  disabled={creando}
-                  className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black uppercase shadow-lg shadow-blue-200"
-                >
-                  {creando ? 'Guardando...' : 'Crear Usuario'}
-                </button>
-              </div>
-            </form>
+        <div className="bg-white rounded-[45px] shadow-2xl overflow-hidden border border-slate-100">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-900 text-white text-[10px] uppercase font-black tracking-widest">
+                  <th className="p-8">Colaborador</th>
+                  <th className="p-8">Correo Electrónico</th>
+                  <th className="p-8 text-center">Cargo / Rol</th>
+                  <th className="p-8 text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50 font-bold">
+                {loading ? (
+                  <tr><td colSpan={4} className="p-24 text-center text-slate-300 font-black uppercase animate-pulse">Cargando Empleados...</td></tr>
+                ) : usuarios.length === 0 ? (
+                  <tr><td colSpan={4} className="p-24 text-center text-slate-200 font-black uppercase">No se encontraron registros en 'empleados'</td></tr>
+                ) : (
+                  usuarios.map((u) => (
+                    <tr key={u.id} className="hover:bg-blue-50/40 transition-all group">
+                      <td className="p-8">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-slate-200 text-slate-600 rounded-2xl flex items-center justify-center font-black text-sm group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner">
+                            {u.nombres?.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="text-slate-800 uppercase text-sm tracking-tight">{u.nombres}</div>
+                            <div className="text-[9px] text-slate-400 font-medium">REG: {new Date(u.creado_el).toLocaleDateString()}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-8 text-xs text-slate-500 font-medium italic lowercase">
+                        {u.email}
+                      </td>
+                      <td className="p-8 text-center">
+                        <span className="bg-slate-100 text-slate-500 px-4 py-2 rounded-xl text-[9px] uppercase font-black tracking-widest group-hover:bg-blue-100 group-hover:text-blue-700 transition-colors">
+                          {u.rol_empresa || 'Operario'}
+                        </span>
+                      </td>
+                      <td className="p-8">
+                        <div className="flex justify-center gap-3">
+                          <button 
+                            onClick={() => window.location.href = `/admin/usuarios/editar/${u.id}`}
+                            className="w-11 h-11 bg-white border border-slate-100 flex items-center justify-center rounded-2xl shadow-sm hover:bg-blue-600 hover:text-white transition-all text-lg"
+                            title="Editar"
+                          >
+                            ✏️
+                          </button>
+                          <button 
+                            onClick={() => eliminarUsuario(u.id, u.nombres)}
+                            className="w-11 h-11 bg-white border border-slate-100 flex items-center justify-center rounded-2xl shadow-sm hover:bg-red-600 hover:text-white transition-all text-lg"
+                            title="Eliminar"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
