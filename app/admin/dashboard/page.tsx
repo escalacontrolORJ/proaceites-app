@@ -1,88 +1,98 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+
+import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
-export default function DashboardUsuario() {
-  const [empleado, setEmpleado] = useState<any>(null)
-  const [ultimoMov, setUltimoMov] = useState<any>(null)
-  const [gps, setGps] = useState<string | null>(null)
-  const [procesando, setProcesando] = useState(false)
-  const videoRef = useRef<HTMLVideoElement>(null)
+export default function DashboardPage() {
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState({ clientes: 0, visitas: 0 })
 
   useEffect(() => {
-    iniciarApp()
-    const watchId = navigator.geolocation.watchPosition(
-      (p) => setGps(`https://www.google.com/maps?q=${p.coords.latitude},${p.coords.longitude}`),
-      (e) => console.error(e),
-      { enableHighAccuracy: true }
-    )
-    return () => navigator.geolocation.clearWatch(watchId)
+    async function loadInitialData() {
+      try {
+        // Intentamos cargar conteos básicos para verificar conexión
+        const { count: countClientes } = await supabase
+          .from('clientes')
+          .select('*', { count: 'exact', head: true })
+
+        const { count: countVisitas } = await supabase
+          .from('visitas')
+          .select('*', { count: 'exact', head: true })
+
+        setStats({
+          clientes: countClientes || 0,
+          visitas: countVisitas || 0
+        })
+      } catch (error) {
+        console.error("Error cargando dashboard:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadInitialData()
   }, [])
 
-  async function iniciarApp() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    
-    const { data: emp } = await supabase.from('empleados').select('*').eq('email', user.email).maybeSingle()
-    if (emp) {
-      setEmpleado(emp)
-      const { data: mov } = await supabase.from('asistencia')
-        .select('*').eq('empleado_id', emp.id).order('fecha_hora', { ascending: false }).limit(1).maybeSingle()
-      setUltimoMov(mov)
-      
-      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
-      if (videoRef.current) videoRef.current.srcObject = s
-    }
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-4 font-black text-slate-400 uppercase text-[10px] tracking-widest">Iniciando Panel...</p>
+      </div>
+    )
   }
-
-  const marcar = async () => {
-    if (!gps) return alert("Esperando señal GPS...")
-    setProcesando(true)
-    
-    const canvas = document.createElement('canvas')
-    canvas.width = 300; canvas.height = 300
-    videoRef.current && canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0, 300, 300)
-    const foto = canvas.toDataURL('image/jpeg', 0.6)
-
-    const tipo = ultimoMov?.tipo_registro === 'ingreso' ? 'salida' : 'ingreso'
-
-    const { error } = await supabase.from('asistencia').insert([{
-      empleado_id: empleado.id,
-      nombres: empleado.nombres,
-      tipo_registro: tipo,
-      fecha: new Date().toISOString().split('T')[0],
-      fecha_hora: new Date().toISOString(),
-      ubicacion: gps,
-      foto_url: foto
-    }])
-
-    if (!error) {
-      alert(`✅ ${tipo.toUpperCase()} REGISTRADO`)
-      window.location.reload()
-    }
-    setProcesando(false)
-  }
-
-  if (!empleado) return <div className="p-20 text-center font-bold">Cargando perfil...</div>
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="bg-white p-6 rounded-[40px] shadow-2xl w-full max-w-md border border-white">
-        <h1 className="text-xl font-black uppercase text-center mb-1">{empleado.nombres}</h1>
-        <p className="text-[10px] text-center mb-6 font-bold text-slate-400 uppercase tracking-widest">
-          {gps ? '📍 GPS LISTO' : '📡 BUSCANDO SEÑAL...'}
-        </p>
-        <div className="aspect-square rounded-[35px] overflow-hidden bg-black mb-8 border-4 border-slate-50 shadow-inner">
-          <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />
+    <div className="pb-24">
+      <header className="mb-8">
+        <h1 className="text-3xl font-black text-blue-900 uppercase leading-none">Panel de<br/>Control</h1>
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[3px] mt-2">Proaceites App v1.0</p>
+      </header>
+
+      {/* Tarjetas de Resumen */}
+      <div className="grid grid-cols-2 gap-4 mb-8">
+        <div className="bg-blue-600 p-6 rounded-[35px] text-white shadow-xl shadow-blue-200">
+          <span className="text-2xl mb-2 block">🏪</span>
+          <h3 className="text-3xl font-black">{stats.clientes}</h3>
+          <p className="text-[9px] font-bold uppercase opacity-80">Clientes Totales</p>
         </div>
+        <div className="bg-white p-6 rounded-[35px] border border-slate-100 shadow-sm">
+          <span className="text-2xl mb-2 block">📍</span>
+          <h3 className="text-3xl font-black text-slate-800">{stats.visitas}</h3>
+          <p className="text-[9px] font-bold uppercase text-slate-400">Visitas Hoy</p>
+        </div>
+      </div>
+
+      {/* Accesos Rápidos */}
+      <div className="space-y-3">
+        <h2 className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Acciones Rápidas</h2>
+        
         <button 
-          disabled={procesando || !gps}
-          onClick={marcar}
-          className={`w-full py-6 rounded-3xl font-black text-white shadow-xl transition-all ${
-            ultimoMov?.tipo_registro === 'ingreso' ? 'bg-orange-500 shadow-orange-100' : 'bg-blue-900 shadow-blue-100'
-          } disabled:opacity-20`}
+          onClick={() => window.location.href = '/admin/asistencia'}
+          className="w-full bg-white p-5 rounded-[25px] border border-slate-100 flex items-center justify-between group active:scale-95 transition-all"
         >
-          {procesando ? 'GUARDANDO...' : ultimoMov?.tipo_registro === 'ingreso' ? '🔔 MARCAR SALIDA' : '⚡ MARCAR INGRESO'}
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-green-50 rounded-2xl flex items-center justify-center text-xl">📸</div>
+            <div className="text-left">
+              <p className="font-black text-slate-800 uppercase text-sm">Registrar Visita</p>
+              <p className="text-[10px] text-slate-400 font-bold">Foto + GPS + Recaudo</p>
+            </div>
+          </div>
+          <span className="text-slate-300 group-hover:text-blue-600">→</span>
+        </button>
+
+        <button 
+          onClick={() => window.location.href = '/admin/clientes'}
+          className="w-full bg-white p-5 rounded-[25px] border border-slate-100 flex items-center justify-between group active:scale-95 transition-all"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center text-xl">🤝</div>
+            <div className="text-left">
+              <p className="font-black text-slate-800 uppercase text-sm">Nuevo Cliente</p>
+              <p className="text-[10px] text-slate-400 font-bold">Dar de alta local</p>
+            </div>
+          </div>
+          <span className="text-slate-300 group-hover:text-blue-600">→</span>
         </button>
       </div>
     </div>
