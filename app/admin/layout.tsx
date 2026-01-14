@@ -1,21 +1,17 @@
 'use client'
-import Navbar from '@/app/components/Navbar' // Importamos tu componente Navbar
+import Navbar from '@/app/components/Navbar'
 
-export default function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen bg-slate-100">
-      {/* El Navbar fijo a la izquierda */}
-      <div className="w-64 flex-shrink-0">
-        <Navbar />
-      </div>
+    <div className="flex min-h-screen bg-[#f8fafc]">
+      {/* Sidebar */}
+      <Navbar />
 
-      {/* El contenido de las páginas (Dashboard, Usuarios, etc.) */}
-      <main className="flex-1 p-8">
-        {children}
+      {/* Área de Contenido con Espaciado Elegante */}
+      <main className="flex-1 ml-72 p-10">
+        <div className="max-w-7xl mx-auto">
+          {children}
+        </div>
       </main>
     </div>
   )
