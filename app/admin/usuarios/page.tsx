@@ -11,9 +11,10 @@ export default function UsuariosPage() {
   const [creando, setCreando] = useState(false)
   const router = useRouter()
 
-  // Estado para el nuevo usuario
+  // Estado para el nuevo usuario con EMAIL
   const [nuevoUsuario, setNuevoUsuario] = useState({
     nombres: '',
+    email: '', // Añadido
     cedula: '',
     rol_empresa: 'Operario'
   })
@@ -42,7 +43,7 @@ export default function UsuariosPage() {
       .insert([nuevoUsuario])
 
     if (!error) {
-      setNuevoUsuario({ nombres: '', cedula: '', rol_empresa: 'Operario' })
+      setNuevoUsuario({ nombres: '', email: '', cedula: '', rol_empresa: 'Operario' })
       setMostrarModal(false)
       fetchUsuarios()
     } else {
@@ -60,6 +61,7 @@ export default function UsuariosPage() {
 
   const usuariosFiltrados = usuarios.filter(u => 
     u.nombres.toLowerCase().includes(busqueda.toLowerCase()) ||
+    u.email?.toLowerCase().includes(busqueda.toLowerCase()) ||
     u.cedula.includes(busqueda)
   )
 
@@ -68,7 +70,7 @@ export default function UsuariosPage() {
       <header className="mb-6 flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-black text-blue-900 uppercase">Personal</h1>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gestión de Empleados</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gestión de Accesos</p>
         </div>
         <button 
           onClick={() => setMostrarModal(true)}
@@ -82,7 +84,7 @@ export default function UsuariosPage() {
       <div className="mb-6">
         <input 
           type="text"
-          placeholder="Buscar por nombre o cédula..."
+          placeholder="Buscar por nombre, email o cédula..."
           className="w-full p-4 rounded-2xl bg-white border border-slate-200 shadow-sm outline-none focus:border-blue-500 font-medium text-slate-600"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
@@ -97,8 +99,9 @@ export default function UsuariosPage() {
           <div key={u.id} className="bg-white p-4 rounded-[25px] shadow-sm border border-slate-100 flex items-center justify-between">
             <div>
               <h3 className="font-black text-slate-800 uppercase text-sm">{u.nombres}</h3>
-              <div className="flex gap-2 mt-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">ID: {u.cedula}</span>
+              <p className="text-[11px] text-blue-600 font-bold lowercase">{u.email}</p>
+              <div className="flex gap-2 mt-1 items-center">
+                <span className="text-[9px] font-bold text-slate-400 uppercase">ID: {u.cedula}</span>
                 <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${
                   u.rol_empresa === 'Supervisor' ? 'bg-purple-100 text-purple-600' : 
                   u.rol_empresa === 'Vendedor' ? 'bg-green-100 text-green-600' : 
@@ -126,12 +129,13 @@ export default function UsuariosPage() {
         ))}
       </div>
 
-      {/* Modal para Nuevo Usuario */}
+      {/* Modal para Nuevo Usuario con Email */}
       {mostrarModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-[35px] p-8 shadow-2xl animate-in slide-in-from-bottom">
-            <h2 className="text-xl font-black text-slate-800 uppercase mb-6">Nuevo Empleado</h2>
+          <div className="bg-white w-full max-w-md rounded-[35px] p-8 shadow-2xl animate-in slide-in-from-bottom max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-black text-slate-800 uppercase mb-6">Nuevo Usuario</h2>
             <form onSubmit={crearUsuario} className="space-y-4">
+              
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nombre Completo</label>
                 <input 
@@ -139,6 +143,19 @@ export default function UsuariosPage() {
                   className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:bg-white focus:ring-2 ring-blue-500 transition-all font-bold"
                   value={nuevoUsuario.nombres}
                   onChange={e => setNuevoUsuario({...nuevoUsuario, nombres: e.target.value})}
+                />
+              </div>
+
+              {/* CAMPO DE EMAIL AÑADIDO */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Correo Electrónico</label>
+                <input 
+                  type="email"
+                  required
+                  className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:bg-white focus:ring-2 ring-blue-500 transition-all font-bold"
+                  value={nuevoUsuario.email}
+                  placeholder="ejemplo@proaceites.com"
+                  onChange={e => setNuevoUsuario({...nuevoUsuario, email: e.target.value})}
                 />
               </div>
 
@@ -152,7 +169,6 @@ export default function UsuariosPage() {
                 />
               </div>
 
-              {/* EL COMBO DE ROL QUE FALTABA */}
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Rol Asignado</label>
                 <select 
