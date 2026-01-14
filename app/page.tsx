@@ -7,7 +7,7 @@ export default function RootPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const checkUser = async () => {
+    const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
         router.push('/admin/dashboard')
@@ -15,15 +15,12 @@ export default function RootPage() {
         router.push('/login')
       }
     }
-    checkUser()
+    checkSession()
   }, [])
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center">
-      <div className="flex flex-col items-center">
-        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Iniciando Proaceites...</p>
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
     </div>
   )
 }
