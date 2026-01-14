@@ -8,26 +8,35 @@ export default function DashboardPage() {
   const [gpsReady, setGpsReady] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
   const [coords, setCoords] = useState('')
+  const [yaEntro, setYaEntro] = useState(false) // Control de botones
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const router = useRouter()
 
   useEffect(() => {
+    // 1. Revisar si ya marcó entrada hoy en este teléfono
+    const estadoLocal = localStorage.getItem('asistencia_estado')
+    if (estadoLocal === 'INGRESO_REALIZADO') {
+      setYaEntro(true)
+    }
+    
     iniciarSensores()
   }, [])
 
   async function iniciarSensores() {
-    // 1. Iniciar GPS
-    navigator.geolocation.watchPosition(
-      (pos) => {
-        setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`)
-        setGpsReady(true)
-      },
-      () => alert("Por favor activa el GPS"),
-      { enableHighAccuracy: true }
-    )
+    // GPS más agresivo
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`)
+          setGpsReady(true)
+        },
+        () => alert("Error: Activa el GPS y recarga"),
+        { enableHighAccuracy: true, timeout: 10000 }
+      )
+    }
 
-    // 2. Iniciar Cámara en vivo
+    // Cámara
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: "environment" }, 
@@ -38,7 +47,7 @@ export default function DashboardPage() {
         setCameraReady(true)
       }
     } catch (err) {
-      alert("Error al acceder a la cámara. Asegúrate de dar permisos.")
+      console.error("Error cámara", err)
     }
   }
 
@@ -47,7 +56,6 @@ export default function DashboardPage() {
     setLoading(true)
 
     try {
-      // Capturar foto del video
       const canvas = canvasRef.current
       const video = videoRef.current
       if (!canvas || !video) return
@@ -56,7 +64,6 @@ export default function DashboardPage() {
       canvas.height = video.videoHeight
       canvas.getContext('2d')?.drawImage(video, 0, 0)
       
-      // Convertir a archivo
       const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.8))
       if (!blob) return
 
@@ -75,8 +82,19 @@ export default function DashboardPage() {
         fecha: new Date().toISOString()
       }])
 
-      alert(`✅ ${tipo} registrado con éxito`)
-      if (tipo === 'INGRESO') router.push('/admin/asistencia')
+      // LÓGICA DE BLOQUEO:
+      if (tipo === 'INGRESO') {
+        localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
+        setYaEntro(true)
+        alert("✅ INGRESO REGISTRADO. Ahora puede registrar visitas.")
+        router.push('/admin/asistencia')
+      } else {
+        localStorage.removeItem('asistencia_estado') // Reset para el día siguiente
+        setYaEntro(false)
+        alert("✅ SALIDA REGISTRADA. Jornada finalizada.")
+        window.location.reload() // Recargar para limpiar todo
+      }
+
     } catch (err: any) {
       alert("Error: " + err.message)
     } finally {
@@ -85,54 +103,54 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white p-6 flex flex-col items-center">
-      <h1 className="text-2xl font-black italic mb-4">PROACEITES PRO</h1>
+    <div className="min-h-screen bg-slate-950 text-white p-6 flex flex-col items-center font-sans">
+      <h1 className="text-3xl font-black italic mb-2 tracking-tighter">PROACEITES</h1>
+      <p className="text-[10px] text-blue-400 font-bold tracking-[3px] mb-6 uppercase">
+        {yaEntro ? 'Estado: En Jornada' : 'Estado: Pendiente Ingreso'}
+      </p>
 
-      {/* VISOR DE CÁMARA EN VIVO */}
-      <div className="relative w-full max-w-sm aspect-square bg-slate-900 rounded-[40px] overflow-hidden border-4 border-slate-800 shadow-2xl">
-        {!cameraReady && (
-          <div className="absolute inset-0 flex items-center justify-center text-slate-500 font-bold animate-pulse">
-            ESPERANDO CÁMARA...
-          </div>
-        )}
-        <video 
-          ref={videoRef} 
-          autoPlay 
-          playsInline 
-          className={`w-full h-full object-cover ${cameraReady ? 'opacity-100' : 'opacity-0'}`}
-        />
+      {/* VISOR DE CÁMARA */}
+      <div className="relative w-full max-w-sm aspect-[3/4] bg-slate-900 rounded-[30px] overflow-hidden border-2 border-slate-800 shadow-2xl mb-8">
+        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
         <canvas ref={canvasRef} className="hidden" />
         
-        {/* INDICADOR GPS SOBRE EL VIDEO */}
-        <div className="absolute top-4 left-4">
-          <div className={`px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-2 ${gpsReady ? 'bg-green-500 text-white' : 'bg-red-500 animate-pulse'}`}>
-             <div className="w-2 h-2 bg-white rounded-full animate-ping"></div>
-             {gpsReady ? 'GPS ACTIVO' : 'BUSCANDO GPS'}
-          </div>
+        <div className="absolute top-4 right-4 flex gap-2">
+            <div className={`px-3 py-1 rounded-full text-[9px] font-black ${gpsReady ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}>
+                GPS {gpsReady ? 'LISTO' : 'BUSCANDO'}
+            </div>
         </div>
       </div>
 
-      <div className="w-full max-w-sm mt-8 space-y-4">
-        <button 
-          onClick={() => capturarYEnviar('INGRESO')}
-          disabled={!gpsReady || !cameraReady || loading}
-          className="w-full bg-emerald-500 p-6 rounded-3xl font-black uppercase text-xl disabled:opacity-20 active:scale-95 transition-all shadow-lg shadow-emerald-500/20"
-        >
-          {loading ? 'PROCESANDO...' : '🚀 MARCAR INGRESO'}
-        </button>
-
-        <button 
-          onClick={() => capturarYEnviar('SALIDA')}
-          disabled={!gpsReady || !cameraReady || loading}
-          className="w-full bg-rose-500 p-6 rounded-3xl font-black uppercase text-xl disabled:opacity-20 active:scale-95 transition-all shadow-lg shadow-rose-500/20"
-        >
-          {loading ? 'PROCESANDO...' : '🏁 MARCAR SALIDA'}
-        </button>
+      <div className="w-full max-w-sm space-y-4">
+        {/* Solo mostramos Ingreso si NO ha entrado */}
+        {!yaEntro ? (
+          <button 
+            onClick={() => capturarYEnviar('INGRESO')}
+            disabled={!gpsReady || !cameraReady || loading}
+            className="w-full bg-emerald-500 p-8 rounded-[30px] font-black uppercase text-xl shadow-lg shadow-emerald-500/20 disabled:opacity-20 transition-all active:scale-95"
+          >
+            {loading ? 'REGISTRANDO...' : '🚀 MARCAR INGRESO'}
+          </button>
+        ) : (
+          /* Solo mostramos Salida si YA entró */
+          <button 
+            onClick={() => capturarYEnviar('SALIDA')}
+            disabled={!gpsReady || !cameraReady || loading}
+            className="w-full bg-rose-500 p-8 rounded-[30px] font-black uppercase text-xl shadow-lg shadow-rose-500/20 disabled:opacity-20 transition-all active:scale-95"
+          >
+            {loading ? 'REGISTRANDO...' : '🏁 MARCAR SALIDA'}
+          </button>
+        )}
       </div>
 
-      <p className="mt-6 text-slate-500 text-[10px] uppercase font-bold tracking-widest">
-        Ubicación: {coords || 'Verificando...'}
-      </p>
+      {yaEntro && (
+        <button 
+          onClick={() => router.push('/admin/asistencia')}
+          className="mt-8 text-blue-400 font-bold uppercase text-xs tracking-widest border-b border-blue-400/30 pb-1"
+        >
+          Ir a Registro de Clientes →
+        </button>
+      )}
     </div>
   )
 }
