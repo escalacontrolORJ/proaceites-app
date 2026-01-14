@@ -2,8 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Estilos base para que no se vea plano mientras carga */
 body {
-  background-color: #f3f4f6; /* Un gris claro para que resalten las tarjetas */
+  background-color: #f3f4f6;
+  font-family: sans-serif;
   margin: 0;
-  padding: 0;
 }
