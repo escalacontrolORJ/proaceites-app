@@ -1,133 +1,152 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
-import { supabase } from '../../../lib/supabaseClient'
-import { useRouter } from 'next/navigation'
 
-export default function CrearCliente() {
-  const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  const [ubicacion, setUbicacion] = useState<string>('')
-  const [form, setForm] = useState({ 
-    nombre_fiscal: '', 
-    nombre_comercial: '', 
-    ruc: '', 
-    direccion: '', 
-    observaciones: '' 
+import React, { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabaseClient'
+
+export default function ClientesPage() {
+  const [clientes, setClientes] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [mostrarModal, setMostrarModal] = useState(false)
+  const [guardando, setGuardando] = useState(false)
+
+  const [nuevoCliente, setNuevoCliente] = useState({
+    nombre_local: '',
+    propietario: '',
+    direccion: ''
   })
-  
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
-    iniciarCamara()
-    obtenerUbicacion()
+    fetchClientes()
   }, [])
 
-  const iniciarCamara = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "environment" } 
-      })
-      if (videoRef.current) videoRef.current.srcObject = stream
-    } catch (err) {
-      console.error("Error al acceder a la cámara:", err)
-    }
-  }
-
-  const obtenerUbicacion = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        setUbicacion(`https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`)
-      })
-    }
-  }
-
-  const guardarCliente = async (e: any) => {
-    e.preventDefault()
+  async function fetchClientes() {
     setLoading(true)
-
-    // Capturar foto del canvas
-    const context = canvasRef.current?.getContext('2d')
-    if (canvasRef.current && videoRef.current) {
-      canvasRef.current.width = videoRef.current.videoWidth
-      canvasRef.current.height = videoRef.current.videoHeight
-      context?.drawImage(videoRef.current, 0, 0)
-    }
-    const fotoBase64 = canvasRef.current?.toDataURL('image/jpeg', 0.5)
-
-    const { error } = await supabase.from('clientes').insert([{
-      ...form,
-      foto_local: fotoBase64,
-      ubicacion_gps: ubicacion,
-      fecha_creacion: new Date().toISOString().split('T')[0]
-    }])
-
-    if (error) {
-      alert("Error al guardar: " + error.message)
-    } else {
-      alert("✅ Cliente y fachada registrados con éxito")
-      router.push('/admin/reportes')
-    }
+    const { data, error } = await supabase
+      .from('clientes')
+      .select('*')
+      .order('nombre_local', { ascending: true })
+    if (data) setClientes(data)
     setLoading(false)
   }
 
+  async function crearCliente(e: React.FormEvent) {
+    e.preventDefault()
+    setGuardando(true)
+    
+    // Generamos un ID manual por si la tabla tiene la misma restricción que 'empleados'
+    const { error } = await supabase
+      .from('clientes')
+      .insert([{
+        id: crypto.randomUUID(),
+        ...nuevoCliente
+      }])
+
+    if (!error) {
+      setNuevoCliente({ nombre_local: '', propietario: '', direccion: '' })
+      setMostrarModal(false)
+      fetchClientes()
+    } else {
+      alert('Error: ' + error.message)
+    }
+    setGuardando(false)
+  }
+
   return (
-    <div className="p-6 pb-24 bg-white min-h-screen text-black font-sans">
-      <h1 className="text-xl font-black mb-6 uppercase text-blue-900 tracking-tighter">Alta de Nuevo Cliente</h1>
-      
-      {/* Previsualización de Cámara */}
-      <div className="w-full h-48 bg-black rounded-[30px] overflow-hidden mb-6 border-4 border-gray-100 shadow-lg relative">
-        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-        <canvas ref={canvasRef} className="hidden" />
-        <div className="absolute bottom-2 right-4 bg-blue-600 text-[8px] text-white px-2 py-1 rounded-full font-bold uppercase">
-          Fachada en vivo
+    <div className="pb-24 p-4">
+      <header className="mb-6 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-black text-blue-900 uppercase">Clientes</h1>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Base de Datos de Locales</p>
         </div>
+        <button 
+          onClick={() => setMostrarModal(true)}
+          className="bg-blue-600 text-white w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-all"
+        >
+          <span className="text-2xl">+</span>
+        </button>
+      </header>
+
+      {/* Listado de Clientes */}
+      <div className="space-y-3">
+        {loading ? (
+          <p className="text-center text-slate-400 font-bold py-10 animate-pulse">CARGANDO CLIENTES...</p>
+        ) : clientes.length === 0 ? (
+          <div className="text-center py-10 bg-white rounded-3xl border-2 border-dashed border-slate-200">
+            <p className="text-slate-400 font-bold text-sm uppercase">No hay clientes registrados</p>
+          </div>
+        ) : (
+          clientes.map((c) => (
+            <div key={c.id} className="bg-white p-5 rounded-[30px] shadow-sm border border-slate-100">
+              <h3 className="font-black text-slate-800 uppercase text-base">{c.nombre_local}</h3>
+              <p className="text-xs font-bold text-blue-600 mb-2 uppercase">{c.propietario}</p>
+              <div className="flex items-start gap-2 text-slate-400">
+                <span className="text-xs">📍 {c.direccion}</span>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
-      <form onSubmit={guardarCliente} className="space-y-3">
-        <div className="grid grid-cols-1 gap-3">
-          <input 
-            placeholder="RUC / Cédula" 
-            className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold" 
-            onChange={e => setForm({...form, ruc: e.target.value})} 
-            required 
-          />
-          <input 
-            placeholder="Nombre Fiscal" 
-            className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold" 
-            onChange={e => setForm({...form, nombre_fiscal: e.target.value})} 
-            required 
-          />
-          <input 
-            placeholder="Nombre Comercial" 
-            className="w-full p-4 bg-gray-50 rounded-2xl border-none" 
-            onChange={e => setForm({...form, nombre_comercial: e.target.value})} 
-          />
-          <input 
-            placeholder="Dirección Manual" 
-            className="w-full p-4 bg-gray-50 rounded-2xl border-none text-sm" 
-            onChange={e => setForm({...form, direccion: e.target.value})} 
-          />
-          <textarea 
-            placeholder="Observaciones del cliente..." 
-            className="w-full p-4 bg-gray-50 rounded-2xl border-none text-sm h-24" 
-            onChange={e => setForm({...form, observaciones: e.target.value})} 
-          />
-        </div>
+      {/* Modal para Nuevo Cliente */}
+      {mostrarModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-[35px] p-8 shadow-2xl animate-in slide-in-from-bottom">
+            <h2 className="text-xl font-black text-slate-800 uppercase mb-6 text-center">Registrar Local</h2>
+            
+            <form onSubmit={crearCliente} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nombre del Local</label>
+                <input 
+                  required
+                  placeholder="Ej: Tienda Don Pepe"
+                  className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-blue-500 font-bold text-slate-800"
+                  value={nuevoCliente.nombre_local}
+                  onChange={e => setNuevoCliente({...nuevoCliente, nombre_local: e.target.value})}
+                />
+              </div>
 
-        <div className="p-4 bg-blue-50 rounded-2xl mb-4">
-          <p className="text-[9px] font-black text-blue-400 uppercase mb-1">Ubicación GPS Detectada</p>
-          <p className="text-[10px] font-mono text-blue-800 truncate">{ubicacion || 'Obteniendo GPS...'}</p>
-        </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nombre del Propietario</label>
+                <input 
+                  required
+                  placeholder="Ej: José Martínez"
+                  className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-blue-500 font-bold text-slate-800"
+                  value={nuevoCliente.propietario}
+                  onChange={e => setNuevoCliente({...nuevoCliente, propietario: e.target.value})}
+                />
+              </div>
 
-        <button 
-          type="submit" 
-          disabled={loading || !ubicacion}
-          className="w-full py-5 bg-blue-700 text-white rounded-[25px] font-black shadow-xl uppercase active:scale-95 transition-all disabled:bg-gray-300"
-        >
-          {loading ? 'Guardando...' : 'Registrar Cliente'}
-        </button>
-      </form>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Dirección / Referencia</label>
+                <input 
+                  required
+                  placeholder="Ej: Calle 123 frente al parque"
+                  className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-blue-500 font-bold text-slate-800"
+                  value={nuevoCliente.direccion}
+                  onChange={e => setNuevoCliente({...nuevoCliente, direccion: e.target.value})}
+                />
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setMostrarModal(false)}
+                  className="flex-1 py-4 text-slate-400 font-bold uppercase text-xs"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  disabled={guardando}
+                  className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black uppercase shadow-lg shadow-blue-200"
+                >
+                  {guardando ? 'Guardando...' : 'Guardar Cliente'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
