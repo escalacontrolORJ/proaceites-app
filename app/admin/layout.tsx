@@ -19,42 +19,34 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   ]
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* HEADER FIJO */}
-      <header className="bg-white border-b h-16 flex items-center justify-between px-6 sticky top-0 z-[100] shadow-sm">
-        <span className="font-black text-blue-600 tracking-tighter">PROACEITES</span>
-        <button 
-          onClick={handleLogout}
-          className="bg-red-500 text-white px-4 py-1.5 rounded-full text-[10px] font-bold uppercase shadow-lg active:scale-95 transition-transform"
-        >
-          Salir
+    <div className="min-h-screen bg-slate-100 flex flex-col">
+      {/* HEADER SUPERIOR - Z-INDEX ALTO */}
+      <header className="bg-white border-b h-16 flex items-center justify-between px-6 sticky top-0 z-[999] shadow-sm">
+        <span className="font-black text-blue-600">PROACEITES</span>
+        <button onClick={handleLogout} className="bg-red-500 text-white px-3 py-1 rounded-lg text-[10px] font-bold">
+          SALIR
         </button>
       </header>
 
-      {/* CONTENIDO (Aquí carga Usuarios, Marcaciones, etc.) */}
+      {/* CONTENIDO (La tarjeta blanca de tu foto) */}
       <main className="flex-1 p-4 pb-32">
         <div className="max-w-md mx-auto">
           {children}
         </div>
       </main>
 
-      {/* BARRA DE NAVEGACIÓN INFERIOR (LOS BOTONES QUE NECESITAS) */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 h-20 flex justify-around items-center z-[100] shadow-[0_-5px_20px_rgba(0,0,0,0.05)]">
+      {/* NAV INFERIOR - Z-INDEX ALTO PARA QUE NO LO TAPE NADA */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 h-20 flex justify-around items-center z-[999] shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
         {menu.map((item) => {
           const active = pathname === item.path
           return (
             <button
               key={item.path}
               onClick={() => router.push(item.path)}
-              className="flex flex-col items-center justify-center w-full h-full gap-1 active:bg-slate-50 transition-colors"
+              className={`flex flex-col items-center justify-center flex-1 h-full gap-1 ${active ? 'text-blue-600' : 'text-slate-400'}`}
             >
-              <span className={`text-2xl ${active ? 'opacity-100 scale-110' : 'opacity-40'}`}>
-                {item.icon}
-              </span>
-              <span className={`text-[10px] font-black tracking-tight ${active ? 'text-blue-600' : 'text-slate-400'}`}>
-                {item.name.toUpperCase()}
-              </span>
-              {active && <div className="w-5 h-1 bg-blue-600 rounded-full"></div>}
+              <span className="text-2xl">{item.icon}</span>
+              <span className="text-[10px] font-bold uppercase">{item.name}</span>
             </button>
           )
         })}
