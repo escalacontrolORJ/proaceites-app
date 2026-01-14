@@ -10,8 +10,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
     if (error) {
       alert("Error: " + error.message)
       setLoading(false)
@@ -21,25 +20,14 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="bg-white p-10 rounded-[45px] shadow-2xl w-full max-w-sm border border-slate-100">
-        <h1 className="text-2xl font-black text-blue-900 uppercase text-center mb-8 tracking-tighter">Acceso Personal</h1>
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
+      <div className="bg-white p-8 rounded-[40px] shadow-xl w-full max-w-sm">
+        <h1 className="text-2xl font-black text-blue-900 text-center mb-6 uppercase">Proaceites</h1>
         <form onSubmit={handleLogin} className="space-y-4">
-          <input 
-            type="email" placeholder="Correo electrónico" 
-            className="w-full p-5 bg-slate-50 rounded-2xl outline-none font-bold text-slate-800 border-2 border-transparent focus:border-blue-500"
-            onChange={(e) => setEmail(e.target.value)} required
-          />
-          <input 
-            type="password" placeholder="Contraseña" 
-            className="w-full p-5 bg-slate-50 rounded-2xl outline-none font-bold text-slate-800 border-2 border-transparent focus:border-blue-500"
-            onChange={(e) => setPassword(e.target.value)} required
-          />
-          <button 
-            type="submit" disabled={loading}
-            className="w-full bg-blue-600 text-white p-5 rounded-2xl font-black uppercase shadow-xl disabled:bg-slate-300 transition-all active:scale-95"
-          >
-            {loading ? 'Entrando...' : 'Iniciar Sesión'}
+          <input type="email" placeholder="Email" className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-blue-500" onChange={(e)=>setEmail(e.target.value)} required />
+          <input type="password" placeholder="Clave" className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-blue-500" onChange={(e)=>setPassword(e.target.value)} required />
+          <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white p-4 rounded-2xl font-black uppercase shadow-lg">
+            {loading ? 'Verificando...' : 'Entrar Ahora'}
           </button>
         </form>
       </div>
