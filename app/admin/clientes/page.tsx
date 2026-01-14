@@ -11,6 +11,7 @@ export default function ClientesPage() {
 
   const [nuevoCliente, setNuevoCliente] = useState({
     nombre_local: '',
+    nombre_fiscal: '', // Campo que estaba faltando
     propietario: '',
     direccion: ''
   })
@@ -33,22 +34,27 @@ export default function ClientesPage() {
     e.preventDefault()
     setGuardando(true)
     
-    // Generamos un ID manual por si la tabla tiene la misma restricción que 'empleados'
-    const { error } = await supabase
-      .from('clientes')
-      .insert([{
-        id: crypto.randomUUID(),
-        ...nuevoCliente
-      }])
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .insert([{
+          id: crypto.randomUUID(),
+          nombre_local: nuevoCliente.nombre_local,
+          nombre_fiscal: nuevoCliente.nombre_fiscal, // Enviamos el valor para evitar el error
+          propietario: nuevoCliente.propietario,
+          direccion: nuevoCliente.direccion
+        }])
 
-    if (!error) {
-      setNuevoCliente({ nombre_local: '', propietario: '', direccion: '' })
+      if (error) throw error
+
+      setNuevoCliente({ nombre_local: '', nombre_fiscal: '', propietario: '', direccion: '' })
       setMostrarModal(false)
       fetchClientes()
-    } else {
-      alert('Error: ' + error.message)
+    } catch (err: any) {
+      alert('Error: ' + err.message)
+    } finally {
+      setGuardando(false)
     }
-    setGuardando(false)
   }
 
   return (
@@ -66,18 +72,15 @@ export default function ClientesPage() {
         </button>
       </header>
 
-      {/* Listado de Clientes */}
+      {/* Listado */}
       <div className="space-y-3">
         {loading ? (
           <p className="text-center text-slate-400 font-bold py-10 animate-pulse">CARGANDO CLIENTES...</p>
-        ) : clientes.length === 0 ? (
-          <div className="text-center py-10 bg-white rounded-3xl border-2 border-dashed border-slate-200">
-            <p className="text-slate-400 font-bold text-sm uppercase">No hay clientes registrados</p>
-          </div>
         ) : (
           clientes.map((c) => (
             <div key={c.id} className="bg-white p-5 rounded-[30px] shadow-sm border border-slate-100">
               <h3 className="font-black text-slate-800 uppercase text-base">{c.nombre_local}</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Razón Social: {c.nombre_fiscal}</p>
               <p className="text-xs font-bold text-blue-600 mb-2 uppercase">{c.propietario}</p>
               <div className="flex items-start gap-2 text-slate-400">
                 <span className="text-xs">📍 {c.direccion}</span>
@@ -87,21 +90,32 @@ export default function ClientesPage() {
         )}
       </div>
 
-      {/* Modal para Nuevo Cliente */}
+      {/* Modal */}
       {mostrarModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-[35px] p-8 shadow-2xl animate-in slide-in-from-bottom">
+          <div className="bg-white w-full max-w-md rounded-[35px] p-8 shadow-2xl animate-in slide-in-from-bottom max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-black text-slate-800 uppercase mb-6 text-center">Registrar Local</h2>
             
             <form onSubmit={crearCliente} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nombre del Local</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nombre Comercial (Local)</label>
                 <input 
                   required
                   placeholder="Ej: Tienda Don Pepe"
                   className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-blue-500 font-bold text-slate-800"
                   value={nuevoCliente.nombre_local}
                   onChange={e => setNuevoCliente({...nuevoCliente, nombre_local: e.target.value})}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Nombre Fiscal / Razón Social</label>
+                <input 
+                  required
+                  placeholder="Ej: Jose Martinez S.A."
+                  className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-blue-500 font-bold text-slate-800"
+                  value={nuevoCliente.nombre_fiscal}
+                  onChange={e => setNuevoCliente({...nuevoCliente, nombre_fiscal: e.target.value})}
                 />
               </div>
 
