@@ -6,95 +6,80 @@ import { useRouter } from 'next/navigation'
 export default function DashboardPage() {
   const [loading, setLoading] = useState(false)
   const [gpsReady, setGpsReady] = useState(false)
-  const [cameraReady, setCameraReady] = useState(false)
   const [coords, setCoords] = useState('')
-  const [yaEntro, setYaEntro] = useState(false) // Control de botones
+  const [yaEntro, setYaEntro] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const router = useRouter()
 
   useEffect(() => {
-    // 1. Revisar si ya marcó entrada hoy en este teléfono
     const estadoLocal = localStorage.getItem('asistencia_estado')
-    if (estadoLocal === 'INGRESO_REALIZADO') {
-      setYaEntro(true)
-    }
-    
+    if (estadoLocal === 'INGRESO_REALIZADO') setYaEntro(true)
     iniciarSensores()
   }, [])
 
   async function iniciarSensores() {
-    // GPS más agresivo
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`)
-          setGpsReady(true)
-        },
-        () => alert("Error: Activa el GPS y recarga"),
-        { enableHighAccuracy: true, timeout: 10000 }
-      )
-    }
-
-    // Cámara
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`); setGpsReady(true); },
+      () => alert("Activa el GPS"),
+      { enableHighAccuracy: true }
+    )
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "environment" }, 
-        audio: false 
-      })
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        setCameraReady(true)
-      }
-    } catch (err) {
-      console.error("Error cámara", err)
-    }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      if (videoRef.current) videoRef.current.srcObject = stream
+    } catch (err) { console.error(err) }
   }
 
   const capturarYEnviar = async (tipo: 'INGRESO' | 'SALIDA') => {
-    if (!gpsReady || !cameraReady) return
+    if (!gpsReady || !videoRef.current) return
     setLoading(true)
 
     try {
       const canvas = canvasRef.current
       const video = videoRef.current
-      if (!canvas || !video) return
-      
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      canvas.getContext('2d')?.drawImage(video, 0, 0)
-      
-      const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.8))
+      canvas!.width = video.videoWidth
+      canvas!.height = video.videoHeight
+      canvas!.getContext('2d')?.drawImage(video, 0, 0)
+      const blob = await new Promise<Blob | null>(res => canvas!.toBlob(res, 'image/jpeg', 0.7))
       if (!blob) return
 
       const fileName = `${Date.now()}_${tipo}.jpg`
-      const { error: upErr } = await supabase.storage.from('fotos_asistencia').upload(fileName, blob)
-      if (upErr) throw upErr
-
+      await supabase.storage.from('fotos_asistencia').upload(fileName, blob)
       const { data: { publicUrl } } = supabase.storage.from('fotos_asistencia').getPublicUrl(fileName)
 
       const { data: { session } } = await supabase.auth.getSession()
-      await supabase.from('asistencia').insert([{ 
-        usuario_id: session?.user.id,
-        tipo,
-        coordenadas: coords,
-        foto_url: publicUrl,
-        fecha: new Date().toISOString()
-      }])
+      const hoy = new Date().toISOString().split('T')[0]
 
-      // LÓGICA DE BLOQUEO:
       if (tipo === 'INGRESO') {
+        // CREAR REGISTRO NUEVO CON DATOS DE INGRESO
+        await supabase.from('asistencia').insert([{ 
+          empleado_id: session?.user.id,
+          fecha: hoy,
+          hora_ingreso: new Date().toLocaleTimeString(),
+          foto_ingreso: publicUrl,
+          ubicacion_ingreso: coords,
+          tipo_registro: 'completo'
+        }])
         localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
         setYaEntro(true)
-        alert("✅ INGRESO REGISTRADO. Ahora puede registrar visitas.")
+        alert("Ingreso registrado");
         router.push('/admin/asistencia')
       } else {
-        localStorage.removeItem('asistencia_estado') // Reset para el día siguiente
-        setYaEntro(false)
-        alert("✅ SALIDA REGISTRADA. Jornada finalizada.")
-        window.location.reload() // Recargar para limpiar todo
-      }
+        // ACTUALIZAR EL REGISTRO DE HOY CON DATOS DE SALIDA
+        await supabase.from('asistencia')
+          .update({ 
+            hora_salida: new Date().toLocaleTimeString(),
+            foto_salida: publicUrl,
+            ubicacion_salida: coords
+          })
+          .eq('empleado_id', session?.user.id)
+          .eq('fecha', hoy)
 
+        localStorage.removeItem('asistencia_estado')
+        setYaEntro(false)
+        alert("Salida registrada");
+        window.location.reload()
+      }
     } catch (err: any) {
       alert("Error: " + err.message)
     } finally {
@@ -103,54 +88,28 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-6 flex flex-col items-center font-sans">
-      <h1 className="text-3xl font-black italic mb-2 tracking-tighter">PROACEITES</h1>
-      <p className="text-[10px] text-blue-400 font-bold tracking-[3px] mb-6 uppercase">
-        {yaEntro ? 'Estado: En Jornada' : 'Estado: Pendiente Ingreso'}
-      </p>
-
-      {/* VISOR DE CÁMARA */}
-      <div className="relative w-full max-w-sm aspect-[3/4] bg-slate-900 rounded-[30px] overflow-hidden border-2 border-slate-800 shadow-2xl mb-8">
+    <div className="min-h-screen bg-slate-950 text-white p-6 flex flex-col items-center">
+      <h1 className="text-3xl font-black italic mb-4">PROACEITES</h1>
+      
+      <div className="relative w-full max-w-sm aspect-[3/4] bg-black rounded-[30px] overflow-hidden border-2 border-slate-800 mb-6">
         <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
         <canvas ref={canvasRef} className="hidden" />
-        
-        <div className="absolute top-4 right-4 flex gap-2">
-            <div className={`px-3 py-1 rounded-full text-[9px] font-black ${gpsReady ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}>
-                GPS {gpsReady ? 'LISTO' : 'BUSCANDO'}
-            </div>
+        <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-[10px] font-black ${gpsReady ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}>
+          GPS {gpsReady ? 'LISTO' : 'BUSCANDO'}
         </div>
       </div>
 
       <div className="w-full max-w-sm space-y-4">
-        {/* Solo mostramos Ingreso si NO ha entrado */}
         {!yaEntro ? (
-          <button 
-            onClick={() => capturarYEnviar('INGRESO')}
-            disabled={!gpsReady || !cameraReady || loading}
-            className="w-full bg-emerald-500 p-8 rounded-[30px] font-black uppercase text-xl shadow-lg shadow-emerald-500/20 disabled:opacity-20 transition-all active:scale-95"
-          >
-            {loading ? 'REGISTRANDO...' : '🚀 MARCAR INGRESO'}
+          <button onClick={() => capturarYEnviar('INGRESO')} disabled={loading || !gpsReady} className="w-full bg-emerald-500 p-6 rounded-2xl font-black uppercase text-xl disabled:opacity-20">
+            {loading ? '...' : '📸 Iniciar Jornada'}
           </button>
         ) : (
-          /* Solo mostramos Salida si YA entró */
-          <button 
-            onClick={() => capturarYEnviar('SALIDA')}
-            disabled={!gpsReady || !cameraReady || loading}
-            className="w-full bg-rose-500 p-8 rounded-[30px] font-black uppercase text-xl shadow-lg shadow-rose-500/20 disabled:opacity-20 transition-all active:scale-95"
-          >
-            {loading ? 'REGISTRANDO...' : '🏁 MARCAR SALIDA'}
+          <button onClick={() => capturarYEnviar('SALIDA')} disabled={loading || !gpsReady} className="w-full bg-rose-500 p-6 rounded-2xl font-black uppercase text-xl disabled:opacity-20">
+            {loading ? '...' : '🏁 Finalizar Jornada'}
           </button>
         )}
       </div>
-
-      {yaEntro && (
-        <button 
-          onClick={() => router.push('/admin/asistencia')}
-          className="mt-8 text-blue-400 font-bold uppercase text-xs tracking-widest border-b border-blue-400/30 pb-1"
-        >
-          Ir a Registro de Clientes →
-        </button>
-      )}
     </div>
   )
 }
