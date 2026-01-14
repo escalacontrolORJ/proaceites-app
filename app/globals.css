@@ -1,10 +1,14 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-/* Estilos base para que no se vea plano mientras carga */
+@theme {
+  --color-primary: #1d4ed8;
+  --color-secondary: #ef4444;
+}
+
+/* Estilos de emergencia por si Tailwind falla */
 body {
   background-color: #f3f4f6;
-  font-family: sans-serif;
+  font-family: ui-sans-serif, system-ui, sans-serif;
   margin: 0;
+  padding: 0;
 }

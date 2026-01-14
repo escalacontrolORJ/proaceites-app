@@ -12,32 +12,39 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   const menu = [
-    { n: 'Inicio', p: '/admin/dashboard', i: '📊' },
+    { n: 'Dashboard', p: '/admin/dashboard', i: '📊' },
     { n: 'Usuarios', p: '/admin/usuarios', i: '👥' },
     { n: 'Marcas', p: '/admin/asistencia', i: '⏱️' },
     { n: 'Reportes', p: '/admin/reportes', i: '📁' }
   ]
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <header className="bg-blue-700 text-white h-16 flex items-center justify-between px-6 sticky top-0 z-50 shadow-lg">
-        <span className="font-black tracking-tighter">PROACEITES</span>
-        <button onClick={handleLogout} className="bg-red-500 px-3 py-1 rounded-md text-[10px] font-bold">SALIR</button>
+    <div style={{ minHeight: '100-screen', backgroundColor: '#f3f4f6', display: 'flex', flexDirection: 'column' }}>
+      {/* HEADER */}
+      <header style={{ backgroundColor: '#1d4ed8', color: 'white', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', position: 'sticky', top: 0, zIndex: 50, boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+        <span style={{ fontWeight: 'bold' }}>PROACEITES ADMIN</span>
+        <button onClick={handleLogout} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
+          SALIR
+        </button>
       </header>
 
-      <main className="flex-1 p-4 pb-28">
-        <div className="max-w-md mx-auto">{children}</div>
+      {/* CONTENIDO */}
+      <main style={{ flex: 1, padding: '20px', paddingBottom: '100px' }}>
+        <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+          {children}
+        </div>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t h-20 flex justify-around items-center z-50 shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
+      {/* NAVEGACIÓN INFERIOR */}
+      <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'white', height: '80px', display: 'flex', justifyContent: 'space-around', alignItems: 'center', borderTop: '1px solid #e5e7eb', zIndex: 50, boxShadow: '0 -2px 10px rgba(0,0,0,0.05)' }}>
         {menu.map((item) => (
           <button 
             key={item.p} 
             onClick={() => router.push(item.p)}
-            className={`flex flex-col items-center gap-1 ${pathname === item.p ? 'text-blue-700 font-bold' : 'text-slate-400'}`}
+            style={{ border: 'none', background: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', gap: '4px', color: pathname === item.p ? '#1d4ed8' : '#9ca3af' }}
           >
-            <span className="text-2xl">{item.i}</span>
-            <span className="text-[10px] uppercase">{item.n}</span>
+            <span style={{ fontSize: '24px' }}>{item.i}</span>
+            <span style={{ fontSize: '10px', fontWeight: 'bold' }}>{item.n.toUpperCase()}</span>
           </button>
         ))}
       </nav>
