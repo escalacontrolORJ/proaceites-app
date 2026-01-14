@@ -3,136 +3,62 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
 export default function UsuariosPage() {
-  const [usuarios, setUsuarios] = useState([])
+  const [usuarios, setUsuarios] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  
-  // Estados para el formulario
+  const [nombre, setNombre] = useState('')
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('') // ¡Necesitamos esto para el acceso!
-  const [nombres, setNombres] = useState('')
-  const [rol, setRol] = useState('Vendedor')
+  const [password, setPassword] = useState('')
 
-  // 1. CARGAR LISTADO DE USUARIOS
   const fetchUsuarios = async () => {
-    const { data, error } = await supabase
-      .from('empleados')
-      .select('*')
-      .order('creado_el', { ascending: false })
-    
-    if (error) console.error('Error al cargar:', error.message)
-    else setUsuarios(data || [])
+    const { data } = await supabase.from('empleados').select('*')
+    setUsuarios(data || [])
   }
 
-  useEffect(() => {
-    fetchUsuarios()
-  }, [])
+  useEffect(() => { fetchUsuarios() }, [])
 
-  // 2. FUNCIÓN PARA GRABAR (Aquí está la corrección del ID)
-  const handleGuardarUsuario = async (e: React.FormEvent) => {
+  const handleCrear = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-
-    try {
-      // A. CREAR ACCESO EN SUPABASE AUTH
-      // Esto genera el correo y la clave para que puedan hacer Login
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email,
-        password: password, // La clave que definas en el formulario
-      })
-
-      if (authError) throw authError
-
-      if (authData.user) {
-        // B. CREAR PERFIL EN TABLA EMPLEADOS
-        // Usamos el ID que nos dio Auth para que no salga "ID is null"
-        const { error: dbError } = await supabase
-          .from('empleados')
-          .insert([
-            { 
-              id: authData.user.id,        // EL ID VITAL
-              nombres: nombres,
-              nombre: nombres,             // Llenamos ambos por si acaso
-              email: email,
-              rol_empresa: rol,
-              creado_el: new Date().toISOString()
-            }
-          ])
-
-        if (dbError) throw dbError
-        
-        alert("Usuario creado y acceso habilitado con éxito")
-        // Limpiar formulario y recargar lista
-        setEmail('')
-        setPassword('')
-        setNombres('')
-        fetchUsuarios()
-      }
-    } catch (error: any) {
-      alert("Error crítico: " + error.message)
-    } finally {
-      setLoading(false)
+    const { data: auth, error: aErr } = await supabase.auth.signUp({ email, password })
+    if (auth?.user) {
+      await supabase.from('empleados').insert([{ 
+        id: auth.user.id, nombres: nombre, nombre: nombre, email, rol_empresa: 'Vendedor' 
+      }])
+      setNombre(''); setEmail(''); setPassword(''); fetchUsuarios()
     }
+    setLoading(false)
   }
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold mb-6">Gestión de Usuarios</h1>
+    <div className="space-y-6">
+      <h1 className="text-xl font-black text-slate-800">GESTIÓN DE EQUIPO</h1>
       
-      {/* Formulario */}
-      <form onSubmit={handleGuardarUsuario} className="bg-white p-6 rounded-xl shadow-md mb-8 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <input 
-            type="text" placeholder="Nombre Completo" required
-            value={nombres} onChange={(e) => setNombres(e.target.value)}
-            className="p-2 border rounded"
-          />
-          <input 
-            type="email" placeholder="Correo Electrónico" required
-            value={email} onChange={(e) => setEmail(e.target.value)}
-            className="p-2 border rounded"
-          />
-          <input 
-            type="password" placeholder="Contraseña para el usuario" required
-            value={password} onChange={(e) => setPassword(e.target.value)}
-            className="p-2 border rounded"
-          />
-          <select 
-            value={rol} onChange={(e) => setRol(e.target.value)}
-            className="p-2 border rounded"
-          >
-            <option value="Vendedor">Vendedor</option>
-            <option value="Supervisor">Supervisor</option>
-            <option value="Administrador">Administrador</option>
-          </select>
-        </div>
-        <button 
-          type="submit" disabled={loading}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
-        >
-          {loading ? 'Grabando...' : 'Grabar Nuevo Usuario'}
+      {/* Formulario Compacto */}
+      <form onSubmit={handleCrear} className="bg-white p-4 rounded-2xl shadow-sm border space-y-3">
+        <input className="w-full p-3 bg-slate-50 rounded-xl border-none text-sm" placeholder="Nombre" value={nombre} onChange={e => setNombre(e.target.value)} required />
+        <input className="w-full p-3 bg-slate-50 rounded-xl border-none text-sm" placeholder="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+        <input className="w-full p-3 bg-slate-50 rounded-xl border-none text-sm" placeholder="Contraseña" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+        <button className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-sm">
+          {loading ? 'CARGANDO...' : 'AÑADIR EMPLEADO'}
         </button>
       </form>
 
-      {/* Tabla de Resultados */}
-      <div className="bg-white rounded-xl shadow-md overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="p-4">Nombre</th>
-              <th className="p-4">Email</th>
-              <th className="p-4">Rol</th>
-            </tr>
-          </thead>
-          <tbody>
-            {usuarios.map((u: any) => (
-              <tr key={u.id} className="border-t">
-                <td className="p-4">{u.nombres}</td>
-                <td className="p-4">{u.email}</td>
-                <td className="p-4">{u.rol_empresa}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* Lista Estilo Celular */}
+      <div className="space-y-3">
+        {usuarios.map(u => (
+          <div key={u.id} className="bg-white p-4 rounded-2xl border flex items-center gap-4">
+            <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold">
+              {u.nombres?.charAt(0)}
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-slate-800 text-sm">{u.nombres}</p>
+              <p className="text-xs text-slate-500">{u.email}</p>
+            </div>
+            <span className="text-[10px] bg-slate-100 px-2 py-1 rounded-md font-bold text-slate-600">
+              {u.rol_empresa}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   )
