@@ -16,50 +16,57 @@ export default function DashboardPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const verificarSesion = async () => {
+    const validarAcceso = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
-        router.replace('/login') // Redirigir al login si no hay sesión
-      } else {
-        const estadoLocal = localStorage.getItem('asistencia_estado')
-        if (estadoLocal === 'INGRESO_REALIZADO') setYaEntro(true)
-        setLoading(false)
-        iniciarSensores()
+        router.replace('/login')
+        return
       }
+
+      // Revisar si ya marcó entrada hoy
+      const estadoLocal = localStorage.getItem('asistencia_estado')
+      if (estadoLocal === 'INGRESO_REALIZADO') setYaEntro(true)
+      
+      setLoading(false)
+      iniciarSensores()
     }
-    verificarSesion()
+    validarAcceso()
   }, [])
 
   async function iniciarSensores() {
-    setStatus('Buscando señal GPS...')
+    setStatus('Buscando GPS...')
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`)
         setGpsReady(true)
         setStatus('GPS OK. Iniciando Cámara...')
-        activarCamara()
+        activarCamaraFrontal()
       },
       () => setStatus('ERROR: Activa el GPS ⚠️'),
       { enableHighAccuracy: true, timeout: 5000 }
     )
   }
 
-  async function activarCamara() {
+  async function activarCamaraFrontal() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "user" }, // CAMBIO AQUÍ: "user" activa la cámara frontal
+        audio: false 
+      })
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         setCameraReady(true)
         setStatus('SISTEMA LISTO ✅')
       }
     } catch (err) {
-      setStatus('ERROR: Permisos de cámara ⚠️')
+      setStatus('ERROR: Permiso de Cámara frontal ⚠️')
     }
   }
 
   const capturarYEnviar = async (tipo: 'INGRESO' | 'SALIDA') => {
     if (!gpsReady || !cameraReady) return
     setLoading(true)
+    setStatus('Guardando...')
 
     try {
       const canvas = canvasRef.current
@@ -79,7 +86,7 @@ export default function DashboardPage() {
       const ahoraISO = new Date().toISOString()
 
       if (tipo === 'INGRESO') {
-        // IMPORTANTE: Llenamos columnas viejas y nuevas para que el reporte no falle
+        // Guardamos en todas las columnas para asegurar que el reporte lo vea
         await supabase.from('asistencia').insert([{ 
           empleado_id: session?.user.id,
           fecha: hoy,
@@ -87,15 +94,16 @@ export default function DashboardPage() {
           foto_ingreso: publicUrl,
           ubicacion_ingreso: coords,
           tipo_registro: 'ingreso',
-          foto_url: publicUrl, // Para reportes viejos
-          geolocalizacion: coords, // Para reportes viejos
+          foto_url: publicUrl, 
+          geolocalizacion: coords,
           fecha_hora: ahoraISO
         }])
         localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
         setYaEntro(true)
-        alert("Ingreso registrado");
+        alert("✅ Ingreso registrado con éxito")
         router.push('/admin/asistencia')
       } else {
+        // Actualizamos la misma fila para la salida
         await supabase.from('asistencia').update({ 
           hora_salida: ahoraISO,
           foto_salida: publicUrl,
@@ -105,22 +113,26 @@ export default function DashboardPage() {
 
         localStorage.removeItem('asistencia_estado')
         setYaEntro(false)
-        alert("Salida registrada")
+        alert("✅ Salida registrada con éxito")
         window.location.href = '/admin/dashboard'
       }
-    } catch (err: any) { alert(err.message) } finally { setLoading(false) }
+    } catch (err: any) {
+      alert("Error: " + err.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (loading && !gpsReady) return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
       <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-      <p className="text-xs font-black uppercase tracking-widest">{status}</p>
+      <p className="text-[10px] font-black tracking-widest uppercase animate-pulse">{status}</p>
     </div>
   )
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6 flex flex-col items-center">
-      <h1 className="text-2xl font-black italic mb-2 tracking-tighter">PROACEITES</h1>
+      <h1 className="text-3xl font-black italic mb-2 tracking-tighter">PROACEITES</h1>
       <p className="text-[9px] text-blue-400 font-bold mb-6 tracking-[4px] uppercase">{status}</p>
 
       <div className="relative w-full max-w-sm aspect-[3/4] bg-black rounded-[40px] overflow-hidden border-2 border-slate-800 shadow-2xl mb-8">
@@ -130,9 +142,21 @@ export default function DashboardPage() {
 
       <div className="w-full max-w-sm space-y-4">
         {!yaEntro ? (
-          <button onClick={() => capturarYEnviar('INGRESO')} disabled={!gpsReady} className="w-full bg-emerald-500 p-8 rounded-[30px] font-black text-xl active:scale-95 transition-all shadow-xl shadow-emerald-500/10">📸 ENTRADA</button>
+          <button 
+            onClick={() => capturarYEnviar('INGRESO')} 
+            disabled={!gpsReady || !cameraReady} 
+            className="w-full bg-emerald-500 p-8 rounded-[30px] font-black text-xl active:scale-95 transition-all shadow-xl shadow-emerald-500/10 disabled:opacity-30"
+          >
+            📸 MARCAR ENTRADA
+          </button>
         ) : (
-          <button onClick={() => capturarYEnviar('SALIDA')} disabled={!gpsReady} className="w-full bg-rose-500 p-8 rounded-[30px] font-black text-xl active:scale-95 transition-all shadow-xl shadow-rose-500/10">🏁 SALIDA</button>
+          <button 
+            onClick={() => capturarYEnviar('SALIDA')} 
+            disabled={!gpsReady || !cameraReady} 
+            className="w-full bg-rose-500 p-8 rounded-[30px] font-black text-xl active:scale-95 transition-all shadow-xl shadow-rose-500/10 disabled:opacity-30"
+          >
+            🏁 MARCAR SALIDA
+          </button>
         )}
       </div>
     </div>
