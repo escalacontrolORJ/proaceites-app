@@ -16,7 +16,7 @@ export default function DashboardPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // 1. Verificar si ya marcó entrada hoy en este dispositivo
+    // Verificar si ya marcó entrada hoy en este dispositivo
     const estadoLocal = localStorage.getItem('asistencia_estado')
     if (estadoLocal === 'INGRESO_REALIZADO') {
       setYaEntro(true)
@@ -63,7 +63,7 @@ export default function DashboardPage() {
     setStatus('PROCESANDO...')
 
     try {
-      // Tomar foto del stream de video
+      // Capturar imagen del video
       const canvas = canvasRef.current
       const video = videoRef.current
       if (!canvas || !video) return
@@ -75,45 +75,45 @@ export default function DashboardPage() {
       const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.8))
       if (!blob) return
 
-      // Subir a Storage
+      // Subir foto a Storage
       const fileName = `${Date.now()}_${tipo}.jpg`
       const { error: upErr } = await supabase.storage.from('fotos_asistencia').upload(fileName, blob)
       if (upErr) throw upErr
 
       const { data: { publicUrl } } = supabase.storage.from('fotos_asistencia').getPublicUrl(fileName)
       const { data: { session } } = await supabase.auth.getSession()
+      
       const hoy = new Date().toISOString().split('T')[0]
-      const ahora = new Date().toLocaleTimeString()
+      const ahoraISO = new Date().toISOString() // CORRECCIÓN: Formato ISO para evitar error de zona horaria
 
       if (tipo === 'INGRESO') {
-        // INSERTAR REGISTRO NUEVO (Crea la fila con datos de entrada)
+        // Crear registro nuevo (Fila de hoy)
         const { error: dbError } = await supabase.from('asistencia').insert([{ 
           empleado_id: session?.user.id,
           fecha: hoy,
-          hora_ingreso: ahora,
+          hora_ingreso: ahoraISO,
           foto_ingreso: publicUrl,
           ubicacion_ingreso: coords,
-          // Compatibilidad con columnas antiguas encontradas en el CSV
           tipo_registro: 'ingreso',
           foto: publicUrl,
           geolocalizacion: coords,
-          fecha_hora: new Date().toISOString()
+          fecha_hora: ahoraISO
         }])
 
         if (dbError) throw dbError
 
         localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
         setYaEntro(true)
-        alert("✅ INGRESO REGISTRADO EXITOSAMENTE")
+        alert("✅ INGRESO REGISTRADO")
         router.push('/admin/asistencia')
       } else {
-        // ACTUALIZAR REGISTRO DE HOY (Completa la misma fila con datos de salida)
+        // Actualizar registro existente (Completar la fila con la salida)
         const { error: dbError } = await supabase.from('asistencia')
           .update({ 
-            hora_salida: ahora,
+            hora_salida: ahoraISO,
             foto_salida: publicUrl,
             ubicacion_salida: coords,
-            tipo_registro: 'salida' // Actualiza el estado para reportes viejos
+            tipo_registro: 'salida'
           })
           .eq('empleado_id', session?.user.id)
           .eq('fecha', hoy)
@@ -127,7 +127,7 @@ export default function DashboardPage() {
       }
 
     } catch (err: any) {
-      alert("Error crítico: " + err.message)
+      alert("Error Crítico: " + err.message)
     } finally {
       setLoading(false)
       setStatus('SISTEMA LISTO ✅')
@@ -154,7 +154,6 @@ export default function DashboardPage() {
         />
         <canvas ref={canvasRef} className="hidden" />
         
-        {/* OVERLAY DE ESTADO */}
         <div className="absolute bottom-6 left-0 right-0 flex justify-center">
             <div className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 text-[10px] font-bold">
                 📍 {coords || 'Buscando satélite...'}
@@ -194,7 +193,7 @@ export default function DashboardPage() {
       {loading && (
         <div className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50">
           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="mt-6 font-black text-xl animate-pulse tracking-tighter">SINCRONIZANDO...</p>
+          <p className="mt-6 font-black text-xl animate-pulse tracking-tighter text-center">GUARDANDO REGISTRO...</p>
         </div>
       )}
     </div>
