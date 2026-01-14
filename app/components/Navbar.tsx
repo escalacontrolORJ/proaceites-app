@@ -1,49 +1,54 @@
 'use client'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
+import { supabase } from '@/lib/supabaseClient'
 
-export default function AdminNav() {
+export default function Navbar() {
+  const router = useRouter()
   const pathname = usePathname()
 
-  // Función para saber qué link está activo y ponerlo azul
-  const linkStyle = (path: string) => `
-    px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all
-    ${pathname === path 
-      ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
-      : 'text-slate-400 hover:text-slate-900 hover:bg-slate-100'}
-  `
+  const menuItems = [
+    { name: 'Dashboard', path: '/admin/dashboard' },
+    { name: 'Usuarios', path: '/admin/usuarios' },
+    { name: 'Marcaciones', path: '/admin/asistencia' },
+    { name: 'Ventas / Visitas', path: '/admin/visitas' },
+  ]
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    // window.location.href asegura que regreses al login de forma limpia
+    window.location.href = '/login'
+  }
 
   return (
-    <nav className="bg-white border-b border-slate-100 sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-        
-        {/* LOGO O TÍTULO */}
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center">
-            <span className="text-white font-black text-xl">P</span>
-          </div>
-          <span className="font-black tracking-tighter text-xl">PROACEITES</span>
-        </div>
+    <nav className="flex flex-col h-screen w-64 bg-slate-900 text-white fixed left-0 top-0 border-r border-slate-800">
+      <div className="p-6">
+        <h2 className="text-xl font-bold text-blue-400">ProAceites</h2>
+        <p className="text-xs text-slate-500">Panel Administrativo</p>
+      </div>
 
-        {/* LINKS DE NAVEGACIÓN */}
-        <div className="flex gap-2">
-          <Link href="/admin/reportes" className={linkStyle('/admin/reportes')}>
-            📊 Reportes
-          </Link>
-          
-          <Link href="/admin/usuarios" className={linkStyle('/admin/usuarios')}>
-            👥 Usuarios
-          </Link>
-        </div>
+      <div className="flex-1 p-4 space-y-2">
+        {menuItems.map((item) => (
+          <button
+            key={item.path}
+            onClick={() => router.push(item.path)}
+            className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
+              pathname === item.path 
+              ? 'bg-blue-600 text-white' 
+              : 'hover:bg-slate-800 text-slate-300'
+            }`}
+          >
+            {item.name}
+          </button>
+        ))}
+      </div>
 
-        {/* BOTÓN SALIR (Opcional) */}
-        <Link 
-          href="/login" 
-          className="text-[10px] font-black text-red-400 hover:text-red-600 uppercase tracking-widest"
+      <div className="p-4 border-t border-slate-800">
+        <button
+          onClick={handleLogout}
+          className="w-full text-left px-4 py-3 rounded-lg text-red-400 hover:bg-red-900/20 font-bold transition-colors"
         >
-          Salir
-        </Link>
-
+          Cerrar Sesión
+        </button>
       </div>
     </nav>
   )

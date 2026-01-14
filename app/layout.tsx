@@ -1,14 +1,3 @@
-import './globals.css'
-import { Inter } from 'next/font/google'
-import Navbar from './components/Navbar'
-
-const inter = Inter({ subsets: ['latin'] })
-
-export const metadata = {
-  title: 'Proaceites - Control de Asistencia',
-  description: 'Sistema interno de gestión de personal',
-}
-
 export default function RootLayout({
   children,
 }: {
@@ -16,12 +5,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body className={inter.className}>
-        <main className="min-h-screen pb-24 relative bg-gray-50 text-black">
-          {children}
-        </main>
-        <Navbar />
-      </body>
+      <body>{children}</body>
     </html>
   )
 }
