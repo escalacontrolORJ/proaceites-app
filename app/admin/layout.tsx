@@ -3,15 +3,12 @@ import Navbar from '@/app/components/Navbar'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen bg-[#f8fafc]">
-      {/* Sidebar */}
+    <div className="min-h-screen bg-slate-50">
       <Navbar />
-
-      {/* Área de Contenido con Espaciado Elegante */}
-      <main className="flex-1 ml-72 p-10">
-        <div className="max-w-7xl mx-auto">
-          {children}
-        </div>
+      
+      {/* Contenido principal con margen arriba y abajo para que no se tape */}
+      <main className="pt-20 pb-24 px-4 max-w-md mx-auto">
+        {children}
       </main>
     </div>
   )
