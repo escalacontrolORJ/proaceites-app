@@ -12,39 +12,32 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   const menu = [
-    { n: 'Inicio', p: '/admin/dashboard', i: '🏠' },
-    { n: 'Usuarios', p: '/admin/usuarios', i: '👤' },
+    { n: 'Inicio', p: '/admin/dashboard', i: '📊' },
+    { n: 'Usuarios', p: '/admin/usuarios', i: '👥' },
     { n: 'Marcas', p: '/admin/asistencia', i: '⏱️' },
-    { n: 'Reportes', p: '/admin/reportes', i: '📊' }
+    { n: 'Reportes', p: '/admin/reportes', i: '📁' }
   ]
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
-      {/* HEADER SUPERIOR */}
-      <header className="bg-white border-b h-16 flex items-center justify-between px-6 sticky top-0 z-50">
-        <span className="font-bold text-blue-600">PROACEITES</span>
-        <button onClick={handleLogout} className="bg-red-500 text-white px-3 py-1 rounded-full text-[10px] font-bold">
-          SALIR
-        </button>
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <header className="bg-blue-700 text-white h-16 flex items-center justify-between px-6 sticky top-0 z-50 shadow-lg">
+        <span className="font-black tracking-tighter">PROACEITES</span>
+        <button onClick={handleLogout} className="bg-red-500 px-3 py-1 rounded-md text-[10px] font-bold">SALIR</button>
       </header>
 
-      {/* CONTENIDO */}
       <main className="flex-1 p-4 pb-28">
-        <div className="max-w-md mx-auto bg-white rounded-xl shadow-sm p-4 min-h-[300px]">
-          {children}
-        </div>
+        <div className="max-w-md mx-auto">{children}</div>
       </main>
 
-      {/* BOTONES DE ADMINISTRACIÓN (Inferiores para celular) */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t h-20 flex justify-around items-center z-50 shadow-2xl">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t h-20 flex justify-around items-center z-50 shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
         {menu.map((item) => (
           <button 
             key={item.p} 
             onClick={() => router.push(item.p)}
-            className={`flex flex-col items-center gap-1 transition-all ${pathname === item.p ? 'text-blue-600 scale-110' : 'text-gray-400'}`}
+            className={`flex flex-col items-center gap-1 ${pathname === item.p ? 'text-blue-700 font-bold' : 'text-slate-400'}`}
           >
-            <span className="text-2xl">{item.icon || item.i}</span>
-            <span className="text-[10px] font-bold">{item.n}</span>
+            <span className="text-2xl">{item.i}</span>
+            <span className="text-[10px] uppercase">{item.n}</span>
           </button>
         ))}
       </nav>
