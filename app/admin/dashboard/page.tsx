@@ -4,55 +4,73 @@ import { supabase } from '@/lib/supabaseClient'
 import { useRouter } from 'next/navigation'
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState({ clientes: 0, visitas: 0 })
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const router = useRouter()
 
-  useEffect(() => {
-    async function cargarDatos() {
-      const { count: c } = await supabase.from('clientes').select('*', { count: 'exact', head: true })
-      const { count: v } = await supabase.from('visitas').select('*', { count: 'exact', head: true })
-      setStats({ clientes: c || 0, visitas: v || 0 })
+  // Función para registrar la acción (Ingreso o Salida)
+  const registrarEvento = async (tipo: 'INGRESO' | 'SALIDA') => {
+    setLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      // Obtenemos GPS
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const { error } = await supabase.from('asistencia').insert([
+          { 
+            usuario_id: session?.user.id,
+            tipo: tipo,
+            coordenadas: `${pos.coords.latitude}, ${pos.coords.longitude}`,
+            fecha: new Date().toISOString()
+          }
+        ])
+
+        if (error) throw error
+        alert(`✅ ${tipo} registrado con éxito`);
+        if (tipo === 'INGRESO') router.push('/admin/asistencia');
+      })
+    } catch (error: any) {
+      alert("Error: " + error.message)
+    } finally {
       setLoading(false)
     }
-    cargarDatos()
-  }, [])
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 pb-24 font-sans">
-      <header className="mb-8">
-        <h1 className="text-3xl font-black text-blue-900 uppercase">Panel de Control</h1>
-        <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Sistema Proaceites v2.0</p>
-      </header>
-
-      {/* Botón Principal de Registro */}
-      <button 
-        onClick={() => router.push('/admin/asistencia')}
-        className="w-full bg-blue-600 text-white p-8 rounded-[35px] shadow-2xl shadow-blue-200 flex flex-col items-center justify-center mb-8 active:scale-95 transition-all"
-      >
-        <span className="text-5xl mb-2">📸</span>
-        <span className="text-xl font-black uppercase">Registrar Visita</span>
-        <span className="text-[10px] font-bold opacity-70 uppercase mt-1">Ingreso con Foto y GPS</span>
-      </button>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white p-6 rounded-[30px] border border-slate-100">
-          <p className="text-3xl font-black text-slate-800">{loading ? '...' : stats.clientes}</p>
-          <p className="text-[9px] font-bold text-slate-400 uppercase">Mis Clientes</p>
-        </div>
-        <div className="bg-white p-6 rounded-[30px] border border-slate-100">
-          <p className="text-3xl font-black text-slate-800">{loading ? '...' : stats.visitas}</p>
-          <p className="text-[9px] font-bold text-slate-400 uppercase">Visitas Hoy</p>
-        </div>
+    <div className="min-h-screen bg-slate-900 p-6 flex flex-col justify-center font-sans">
+      <div className="mb-10 text-center">
+        <h1 className="text-white text-4xl font-black uppercase tracking-tighter">Proaceites</h1>
+        <p className="text-blue-400 font-bold text-[10px] tracking-[5px] uppercase">Control de Asistencia</p>
       </div>
 
-      {/* Botón secundario para Clientes */}
+      <div className="space-y-6">
+        {/* BOTÓN DE INGRESO */}
+        <button 
+          onClick={() => registrarEvento('INGRESO')}
+          disabled={loading}
+          className="w-full bg-emerald-500 hover:bg-emerald-600 text-white p-8 rounded-[35px] shadow-2xl shadow-emerald-900/50 flex flex-col items-center active:scale-95 transition-all"
+        >
+          <span className="text-4xl mb-2">🚀</span>
+          <span className="text-2xl font-black uppercase">Marcar Ingreso</span>
+          <span className="text-[10px] font-bold opacity-80 mt-1 uppercase tracking-widest text-emerald-100">Iniciar Jornada</span>
+        </button>
+
+        {/* BOTÓN DE SALIDA */}
+        <button 
+          onClick={() => registrarEvento('SALIDA')}
+          disabled={loading}
+          className="w-full bg-rose-500 hover:bg-rose-600 text-white p-8 rounded-[35px] shadow-2xl shadow-rose-900/50 flex flex-col items-center active:scale-95 transition-all"
+        >
+          <span className="text-4xl mb-2">🏁</span>
+          <span className="text-2xl font-black uppercase">Marcar Salida</span>
+          <span className="text-[10px] font-bold opacity-80 mt-1 uppercase tracking-widest text-rose-100">Finalizar Jornada</span>
+        </button>
+      </div>
+
       <button 
-        onClick={() => router.push('/admin/clientes')}
-        className="w-full mt-4 bg-white p-5 rounded-[25px] border border-slate-100 flex items-center justify-between font-black text-slate-700 uppercase text-xs"
+        onClick={() => router.push('/admin/asistencia')}
+        className="mt-12 text-slate-500 font-black uppercase text-[10px] tracking-widest text-center"
       >
-        <span>🤝 Ver Directorio</span>
-        <span className="text-slate-300">→</span>
+        Ver Clientes →
       </button>
     </div>
   )
