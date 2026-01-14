@@ -3,12 +3,13 @@ import Navbar from '@/app/components/Navbar'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
-      {/* Contenido principal con margen arriba y abajo para que no se tape */}
-      <main className="pt-20 pb-24 px-4 max-w-md mx-auto">
-        {children}
+      {/* El margen superior (mt-14) y el inferior (mb-16) evitan que el contenido se tape */}
+      <main className="pt-14 pb-20 px-4">
+        <div className="max-w-md mx-auto py-4">
+          {children}
+        </div>
       </main>
     </div>
   )
