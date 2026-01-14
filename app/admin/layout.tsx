@@ -11,7 +11,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     window.location.href = '/login'
   }
 
-  const menuItems = [
+  const menu = [
     { name: 'Inicio', path: '/admin/dashboard', icon: '🏠' },
     { name: 'Usuarios', path: '/admin/usuarios', icon: '👥' },
     { name: 'Marcas', path: '/admin/asistencia', icon: '⏱️' },
@@ -19,39 +19,45 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   ]
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
-      {/* HEADER SUPERIOR */}
-      <header className="bg-blue-600 text-white h-16 flex items-center justify-between px-6 sticky top-0 z-50 shadow-md">
-        <span className="font-bold tracking-tight">PROACEITES ADMIN</span>
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* HEADER FIJO */}
+      <header className="bg-white border-b h-16 flex items-center justify-between px-6 sticky top-0 z-[100] shadow-sm">
+        <span className="font-black text-blue-600 tracking-tighter">PROACEITES</span>
         <button 
           onClick={handleLogout}
-          className="bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold uppercase transition-colors"
+          className="bg-red-500 text-white px-4 py-1.5 rounded-full text-[10px] font-bold uppercase shadow-lg active:scale-95 transition-transform"
         >
           Salir
         </button>
       </header>
 
-      {/* CONTENIDO DE LAS PÁGINAS (Aquí es donde ves el ingreso/salida) */}
-      <main className="flex-1 p-4 pb-32 overflow-y-auto">
+      {/* CONTENIDO (Aquí carga Usuarios, Marcaciones, etc.) */}
+      <main className="flex-1 p-4 pb-32">
         <div className="max-w-md mx-auto">
           {children}
         </div>
       </main>
 
-      {/* BARRA DE NAVEGACIÓN INFERIOR (Los botones que te faltan) */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 h-20 flex justify-around items-center z-50 px-2 shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
-        {menuItems.map((item) => (
-          <button
-            key={item.path}
-            onClick={() => router.push(item.path)}
-            className={`flex flex-col items-center justify-center flex-1 h-full gap-1 transition-all ${
-              pathname === item.path ? 'text-blue-600 border-t-2 border-blue-600 bg-blue-50' : 'text-gray-400'
-            }`}
-          >
-            <span className="text-2xl">{item.icon}</span>
-            <span className="text-[10px] font-bold uppercase tracking-wider">{item.name}</span>
-          </button>
-        ))}
+      {/* BARRA DE NAVEGACIÓN INFERIOR (LOS BOTONES QUE NECESITAS) */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 h-20 flex justify-around items-center z-[100] shadow-[0_-5px_20px_rgba(0,0,0,0.05)]">
+        {menu.map((item) => {
+          const active = pathname === item.path
+          return (
+            <button
+              key={item.path}
+              onClick={() => router.push(item.path)}
+              className="flex flex-col items-center justify-center w-full h-full gap-1 active:bg-slate-50 transition-colors"
+            >
+              <span className={`text-2xl ${active ? 'opacity-100 scale-110' : 'opacity-40'}`}>
+                {item.icon}
+              </span>
+              <span className={`text-[10px] font-black tracking-tight ${active ? 'text-blue-600' : 'text-slate-400'}`}>
+                {item.name.toUpperCase()}
+              </span>
+              {active && <div className="w-5 h-1 bg-blue-600 rounded-full"></div>}
+            </button>
+          )
+        })}
       </nav>
     </div>
   )
