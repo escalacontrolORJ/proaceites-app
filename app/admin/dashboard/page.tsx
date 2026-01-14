@@ -4,85 +4,74 @@ import { supabase } from '@/lib/supabaseClient'
 import { useRouter } from 'next/navigation'
 
 export default function DashboardPage() {
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [gpsReady, setGpsReady] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
   const [coords, setCoords] = useState('')
   const [yaEntro, setYaEntro] = useState(false)
-  const [status, setStatus] = useState('Iniciando sensores...')
+  const [status, setStatus] = useState('Verificando acceso...')
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const router = useRouter()
 
   useEffect(() => {
-    // 1. Revisar estado local
-    const estadoLocal = localStorage.getItem('asistencia_estado')
-    if (estadoLocal === 'INGRESO_REALIZADO') setYaEntro(true)
-    
-    // 2. Iniciar sensores con un pequeño delay para asegurar que el DOM esté listo
-    const timer = setTimeout(() => {
-      iniciarSensores()
-    }, 1000)
-
-    return () => clearTimeout(timer)
+    const verificarSesion = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.replace('/login') // Redirigir al login si no hay sesión
+      } else {
+        const estadoLocal = localStorage.getItem('asistencia_estado')
+        if (estadoLocal === 'INGRESO_REALIZADO') setYaEntro(true)
+        setLoading(false)
+        iniciarSensores()
+      }
+    }
+    verificarSesion()
   }, [])
 
   async function iniciarSensores() {
-    setStatus('Buscando GPS...')
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`)
-          setGpsReady(true)
-          setStatus('GPS OK. Iniciando Cámara...')
-          activarCamara()
-        },
-        (err) => {
-          setStatus('Error: Activa GPS y Recarga ⚠️')
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      )
-    }
+    setStatus('Buscando señal GPS...')
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`)
+        setGpsReady(true)
+        setStatus('GPS OK. Iniciando Cámara...')
+        activarCamara()
+      },
+      () => setStatus('ERROR: Activa el GPS ⚠️'),
+      { enableHighAccuracy: true, timeout: 5000 }
+    )
   }
 
   async function activarCamara() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "environment" }, 
-        audio: false 
-      })
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         setCameraReady(true)
         setStatus('SISTEMA LISTO ✅')
       }
     } catch (err) {
-      setStatus('Error Cámara: Revisa Permisos ⚠️')
+      setStatus('ERROR: Permisos de cámara ⚠️')
     }
   }
 
   const capturarYEnviar = async (tipo: 'INGRESO' | 'SALIDA') => {
     if (!gpsReady || !cameraReady) return
     setLoading(true)
-    setStatus('Guardando...')
 
     try {
       const canvas = canvasRef.current
       const video = videoRef.current
-      if (!canvas || !video) return
-      
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      canvas.getContext('2d')?.drawImage(video, 0, 0)
-      
-      const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.6))
+      canvas!.width = video!.videoWidth
+      canvas!.height = video!.videoHeight
+      canvas!.getContext('2d')?.drawImage(video!, 0, 0)
+      const blob = await new Promise<Blob | null>(res => canvas!.toBlob(res, 'image/jpeg', 0.6))
       if (!blob) return
 
       const fileName = `${Date.now()}_${tipo}.jpg`
-      const { error: upErr } = await supabase.storage.from('fotos_asistencia').upload(fileName, blob)
-      if (upErr) throw upErr
-
+      await supabase.storage.from('fotos_asistencia').upload(fileName, blob)
       const { data: { publicUrl } } = supabase.storage.from('fotos_asistencia').getPublicUrl(fileName)
       const { data: { session } } = await supabase.auth.getSession()
       
@@ -90,87 +79,62 @@ export default function DashboardPage() {
       const ahoraISO = new Date().toISOString()
 
       if (tipo === 'INGRESO') {
-        // GUARDAMOS EN TODAS LAS COLUMNAS PARA QUE EL REPORTE NO FALLE
-        const { error: dbError } = await supabase.from('asistencia').insert([{ 
+        // IMPORTANTE: Llenamos columnas viejas y nuevas para que el reporte no falle
+        await supabase.from('asistencia').insert([{ 
           empleado_id: session?.user.id,
           fecha: hoy,
           hora_ingreso: ahoraISO,
           foto_ingreso: publicUrl,
           ubicacion_ingreso: coords,
-          // Columnas viejas para el reporte actual:
-          foto: publicUrl, 
-          foto_url: publicUrl,
-          geolocalizacion: coords,
           tipo_registro: 'ingreso',
+          foto_url: publicUrl, // Para reportes viejos
+          geolocalizacion: coords, // Para reportes viejos
           fecha_hora: ahoraISO
         }])
-
-        if (dbError) throw dbError
         localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
         setYaEntro(true)
-        alert("Ingreso OK")
+        alert("Ingreso registrado");
         router.push('/admin/asistencia')
       } else {
-        // ACTUALIZAMOS EL REGISTRO DE HOY
-        const { error: dbError } = await supabase.from('asistencia')
-          .update({ 
-            hora_salida: ahoraISO,
-            foto_salida: publicUrl,
-            ubicacion_salida: coords,
-            // Actualizamos columnas viejas también para el reporte
-            tipo_registro: 'salida'
-          })
-          .eq('empleado_id', session?.user.id)
-          .eq('fecha', hoy)
+        await supabase.from('asistencia').update({ 
+          hora_salida: ahoraISO,
+          foto_salida: publicUrl,
+          ubicacion_salida: coords,
+          tipo_registro: 'salida'
+        }).eq('empleado_id', session?.user.id).eq('fecha', hoy)
 
-        if (dbError) throw dbError
         localStorage.removeItem('asistencia_estado')
         setYaEntro(false)
-        alert("Salida OK. Jornada terminada.")
-        window.location.href = '/admin/dashboard' // Refresco total para evitar bloqueo de sensores
+        alert("Salida registrada")
+        window.location.href = '/admin/dashboard'
       }
-    } catch (err: any) {
-      alert("Error: " + err.message)
-    } finally {
-      setLoading(false)
-    }
+    } catch (err: any) { alert(err.message) } finally { setLoading(false) }
   }
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-white p-4 flex flex-col items-center">
-      <h1 className="text-3xl font-black italic mb-2 tracking-tighter">PROACEITES</h1>
-      <p className="text-[10px] text-blue-400 font-bold mb-4 uppercase">{status}</p>
+  if (loading && !gpsReady) return (
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
+      <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+      <p className="text-xs font-black uppercase tracking-widest">{status}</p>
+    </div>
+  )
 
-      <div className="relative w-full max-w-sm aspect-[3/4] bg-black rounded-[30px] overflow-hidden border-2 border-slate-800 mb-6">
+  return (
+    <div className="min-h-screen bg-slate-950 text-white p-6 flex flex-col items-center">
+      <h1 className="text-2xl font-black italic mb-2 tracking-tighter">PROACEITES</h1>
+      <p className="text-[9px] text-blue-400 font-bold mb-6 tracking-[4px] uppercase">{status}</p>
+
+      <div className="relative w-full max-w-sm aspect-[3/4] bg-black rounded-[40px] overflow-hidden border-2 border-slate-800 shadow-2xl mb-8">
         <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
         <canvas ref={canvasRef} className="hidden" />
       </div>
 
       <div className="w-full max-w-sm space-y-4">
         {!yaEntro ? (
-          <button 
-            onClick={() => capturarYEnviar('INGRESO')}
-            disabled={!gpsReady || !cameraReady || loading}
-            className="w-full bg-emerald-600 p-8 rounded-[30px] font-black uppercase text-xl disabled:opacity-20 active:scale-95 transition-all shadow-xl shadow-emerald-900/20"
-          >
-            {loading ? '...' : '📸 Iniciar Jornada'}
-          </button>
+          <button onClick={() => capturarYEnviar('INGRESO')} disabled={!gpsReady} className="w-full bg-emerald-500 p-8 rounded-[30px] font-black text-xl active:scale-95 transition-all shadow-xl shadow-emerald-500/10">📸 ENTRADA</button>
         ) : (
-          <button 
-            onClick={() => capturarYEnviar('SALIDA')}
-            disabled={!gpsReady || !cameraReady || loading}
-            className="w-full bg-rose-600 p-8 rounded-[30px] font-black uppercase text-xl disabled:opacity-20 active:scale-95 transition-all shadow-xl shadow-rose-900/20"
-          >
-            {loading ? '...' : '🏁 Finalizar Jornada'}
-          </button>
+          <button onClick={() => capturarYEnviar('SALIDA')} disabled={!gpsReady} className="w-full bg-rose-500 p-8 rounded-[30px] font-black text-xl active:scale-95 transition-all shadow-xl shadow-rose-500/10">🏁 SALIDA</button>
         )}
       </div>
-
-      {yaEntro && (
-        <button onClick={() => router.push('/admin/asistencia')} className="mt-8 text-blue-400 font-bold uppercase text-[10px] tracking-widest border-b border-blue-400/20">
-          Gestionar Clientes →
-        </button>
-      )}
     </div>
   )
 }
