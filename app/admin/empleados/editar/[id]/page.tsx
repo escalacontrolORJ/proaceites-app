@@ -4,19 +4,22 @@ import { supabase } from '../../../../../lib/supabaseClient'
 import { useRouter, useParams } from 'next/navigation'
 
 export default function EditarEmpleado() {
-  const { id } = useParams()
+  const params = useParams()
+  const id = params?.id // Acceso seguro a los parámetros
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   
   const [form, setForm] = useState({
-    nombres: '', // Corregido a plural
+    nombres: '', 
     cedula: '',
     rol_empresa: 'Operario'
   })
 
   useEffect(() => {
-    fetchEmpleado()
+    if (id) {
+      fetchEmpleado()
+    }
   }, [id])
 
   async function fetchEmpleado() {
@@ -44,61 +47,56 @@ export default function EditarEmpleado() {
     const { error } = await supabase
       .from('empleados')
       .update({
-        nombres: form.nombres, // Enviamos como 'nombres'
+        nombres: form.nombres,
         cedula: form.cedula,
         rol_empresa: form.rol_empresa,
       })
       .eq('id', id)
 
-    if (error) {
-      alert("Error al actualizar: " + error.message)
-    } else {
-      alert("✅ Datos actualizados correctamente")
-      router.push('/admin/empleados')
+    if (!error) {
+      router.push('/admin/usuarios')
     }
     setUpdating(false)
   }
 
   if (loading) return (
-    <div className="flex items-center justify-center min-h-screen font-black text-gray-400 uppercase text-xs tracking-widest">
-      Cargando Datos...
+    <div className="flex items-center justify-center min-h-screen">
+      <p className="text-gray-400 font-bold animate-pulse">CARGANDO...</p>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 pb-24 text-black font-sans">
+    <div className="min-h-screen bg-slate-50 p-6">
       <div className="max-w-md mx-auto">
         <header className="mb-8 pt-4">
           <h1 className="text-2xl font-black text-blue-900 uppercase tracking-tighter">Editar Perfil</h1>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">ID: {id.toString().slice(0,12)}...</p>
+          {/* AQUÍ ESTABA EL ERROR: Añadimos validación para que id no sea undefined */}
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
+            ID: {id ? id.toString().slice(0, 12) : '---'}...
+          </p>
         </header>
 
         <form onSubmit={guardarCambios} className="space-y-4">
-          {/* NOMBRES */}
           <div className="bg-white p-4 rounded-[25px] shadow-sm border border-gray-100">
-            <label className="text-[10px] font-black text-blue-400 uppercase ml-2 mb-1 block">Nombres y Apellidos</label>
+            <label className="text-[10px] font-black text-blue-400 uppercase ml-2 mb-1 block">Nombre Completo</label>
             <input 
               type="text"
-              required
-              className="w-full p-2 bg-transparent font-bold text-gray-800 outline-none"
+              className="w-full p-2 bg-transparent font-black text-blue-900 outline-none"
               value={form.nombres}
               onChange={e => setForm({...form, nombres: e.target.value})}
             />
           </div>
 
-          {/* CÉDULA */}
           <div className="bg-white p-4 rounded-[25px] shadow-sm border border-gray-100">
             <label className="text-[10px] font-black text-blue-400 uppercase ml-2 mb-1 block">Cédula / ID</label>
             <input 
               type="text"
-              required
-              className="w-full p-2 bg-transparent font-bold text-gray-800 outline-none"
+              className="w-full p-2 bg-transparent font-black text-blue-900 outline-none"
               value={form.cedula}
               onChange={e => setForm({...form, cedula: e.target.value})}
             />
           </div>
 
-          {/* ROL */}
           <div className="bg-white p-4 rounded-[25px] shadow-sm border border-gray-100">
             <label className="text-[10px] font-black text-blue-400 uppercase ml-2 mb-1 block">Rol Asignado</label>
             <select 
@@ -126,7 +124,7 @@ export default function EditarEmpleado() {
               onClick={() => router.back()}
               className="w-full py-4 text-gray-400 font-bold uppercase text-xs"
             >
-              Cancelar
+              Cancelar y Volver
             </button>
           </div>
         </form>

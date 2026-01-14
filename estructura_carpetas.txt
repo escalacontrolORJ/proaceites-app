@@ -29,6 +29,7 @@ C:.
 |   |   |   +---editar
 |   |   |   |   \---[id]
 |   |   |   \---reporte
+|   |   +---dashboard
 |   |   +---empleados
 |   |   |   +---editar
 |   |   |   |   \---[id]
@@ -41,7 +42,6 @@ C:.
 |   |       |   \---[id]
 |   |       \---nuevo
 |   +---components
-|   +---dashboard
 |   +---login
 |   +---registro
 |   \---visitas
