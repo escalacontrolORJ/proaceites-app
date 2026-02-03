@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import AdminNav from '@/components/AdminNav'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
 
 export default function ReporteAdministrativo() {
   const [tipoReporte, setTipoReporte] = useState('asistencia') 
@@ -65,6 +67,37 @@ export default function ReporteAdministrativo() {
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }
 
+  const exportarExcel = () => {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    if (tipoReporte === 'asistencia') {
+      csvContent += "Empleado,Fecha,Entrada,Salida,Horas\n";
+      filas.forEach(r => csvContent += `${r.nombre},${r.fecha},${r.entrada?.hora || ''},${r.salida?.hora || ''},${r.horas}\n`);
+    } else {
+      csvContent += "Vendedor,Cliente,Motivo,Valor,Observaciones,ProximaVisita\n";
+      filas.forEach(r => csvContent += `${r.nombre_vendedor},${r.nombre_cliente},${r.motivo},${r.valor_transaccion},${r.observaciones},${r.proxima_visita}\n`);
+    }
+    window.open(encodeURI(csvContent));
+  }
+
+  const exportarPDF = () => {
+    const doc = new jsPDF()
+    const titulo = `Reporte de ${tipoReporte.toUpperCase()}`
+    doc.text(titulo, 14, 15)
+    
+    const headers = tipoReporte === 'asistencia' 
+      ? [["Empleado", "Fecha", "Entrada", "Salida", "Horas"]]
+      : [["Vendedor", "Cliente", "Motivo", "Monto", "Prox. Visita"]]
+    
+    const data = filas.map(r => tipoReporte === 'asistencia'
+      ? [r.nombre, r.fecha, r.entrada?.hora || '', r.salida?.hora || '', r.horas]
+      : [r.nombre_vendedor, r.nombre_cliente, r.motivo, r.valor_transaccion, r.proxima_visita]
+    )
+
+    //@ts-ignore
+    doc.autoTable({ head: headers, body: data, startY: 20 })
+    doc.save(`Reporte_${tipoReporte}_${new Date().getTime()}.pdf`)
+  }
+
   const abrirMapa = (gps: any) => {
     if (!gps) return alert("Sin ubicación")
     const coords = gps.toString().replace(/[() ]/g, '')
@@ -75,13 +108,13 @@ export default function ReporteAdministrativo() {
     <div className="min-h-screen bg-slate-950 text-white font-sans">
       <AdminNav />
       <main className="p-4 md:p-8 max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6 bg-slate-900/50 p-6 rounded-3xl border border-white/5 mb-8">
+        <div className="flex flex-col gap-6 bg-slate-900/50 p-6 rounded-3xl border border-white/5 mb-8 shadow-2xl">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <h1 className="text-xl font-black italic uppercase tracking-tighter">Reportes de Gestión</h1>
+            <h1 className="text-xl font-black italic uppercase tracking-tighter">Panel Administrativo</h1>
             <select 
               value={tipoReporte}
               onChange={(e) => setTipoReporte(e.target.value)}
-              className="bg-slate-800 text-emerald-400 border-none rounded-xl p-3 text-sm font-black outline-none w-full md:w-72 shadow-lg"
+              className="bg-slate-800 text-emerald-400 border-none rounded-xl p-3 text-sm font-black outline-none w-full md:w-72"
             >
               <option value="asistencia">📋 REPORTE ASISTENCIA</option>
               <option value="visitas">💼 GESTIÓN DE VISITAS</option>
@@ -91,11 +124,15 @@ export default function ReporteAdministrativo() {
           <div className="flex flex-wrap gap-4 items-end">
             <div className="flex-1 min-w-[140px]">
               <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Desde</p>
-              <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold" />
+              <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold shadow-inner" />
             </div>
             <div className="flex-1 min-w-[140px]">
               <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Hasta</p>
-              <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold" />
+              <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold shadow-inner" />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={exportarExcel} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-lg">Excel</button>
+              <button onClick={exportarPDF} className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-lg">PDF</button>
             </div>
           </div>
         </div>
@@ -105,11 +142,11 @@ export default function ReporteAdministrativo() {
             <table className="w-full text-left border-collapse min-w-[900px]">
               <thead>
                 <tr className="bg-white/5 text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                  <th className="p-6 w-[25%]">Identificación</th>
-                  <th className="p-6 w-[20%]">{tipoReporte === 'asistencia' ? 'Ingreso' : 'Detalle'}</th>
-                  <th className="p-6 w-[20%]">{tipoReporte === 'asistencia' ? 'Salida' : 'Monto'}</th>
-                  <th className="p-6 w-[20%]">Observaciones / Agenda</th>
-                  <th className="p-6 text-center w-[15%]">Evidencia</th>
+                  <th className="p-6">Identificación</th>
+                  <th className="p-6">{tipoReporte === 'asistencia' ? 'Ingreso' : 'Motivo / Fecha'}</th>
+                  <th className="p-6">{tipoReporte === 'asistencia' ? 'Salida' : 'Monto'}</th>
+                  <th className="p-6">{tipoReporte === 'asistencia' ? 'Jornada' : 'Observaciones / Agenda'}</th>
+                  {tipoReporte !== 'asistencia' && <th className="p-6 text-center">Evidencia</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
@@ -153,7 +190,7 @@ export default function ReporteAdministrativo() {
                               <button onClick={() => abrirMapa(r.salida.gps)} className="text-[8px] font-black text-slate-500 underline">GPS</button>
                             </div>
                           </div>
-                        ) : <span className="text-amber-500 font-black text-[9px] animate-pulse italic uppercase">En Turno</span>
+                        ) : <span className="text-amber-500 font-black text-[9px] animate-pulse italic uppercase tracking-widest">En Turno</span>
                       ) : (
                         <p className="text-xl font-black text-white italic">${parseFloat(r.valor_transaccion || 0).toFixed(2)}</p>
                       )}
@@ -161,13 +198,13 @@ export default function ReporteAdministrativo() {
 
                     <td className="p-6">
                       {tipoReporte === 'asistencia' ? (
-                        <div className="inline-block bg-slate-950 px-4 py-1 rounded-xl border border-white/5">
-                          <p className="text-lg font-black text-white leading-none">{r.horas}h</p>
+                        <div className="inline-block bg-slate-950 px-5 py-2 rounded-2xl border border-white/5">
+                          <p className="text-xl font-black text-white">{r.horas}h</p>
                         </div>
                       ) : (
                         <div className="space-y-1">
-                          <p className="text-[10px] text-slate-400 italic leading-tight break-words max-w-[180px]">
-                            {r.observaciones ? `"${r.observaciones}"` : 'Sin notas'}
+                          <p className="text-[10px] text-slate-400 italic leading-tight max-w-[200px]">
+                            {r.observaciones ? `"${r.observaciones}"` : 'Sin observaciones'}
                           </p>
                           {r.proxima_visita && (
                             <p className="text-[9px] font-black text-amber-500 uppercase border-t border-white/5 pt-1">
@@ -178,18 +215,18 @@ export default function ReporteAdministrativo() {
                       )}
                     </td>
 
-                    <td className="p-6 text-center">
-                      <div className="flex flex-col items-center gap-2">
-                        <img 
-                          src={tipoReporte === 'asistencia' ? (r.entrada?.foto || r.salida?.foto) : r.foto_local} 
-                          className="w-12 h-12 rounded-xl object-cover border border-white/10 shadow-md cursor-pointer" 
-                          onClick={() => window.open(tipoReporte === 'asistencia' ? (r.entrada?.foto || r.salida?.foto) : r.foto_local, '_blank')}
-                        />
-                        {!tipoReporte.includes('asistencia') && (
+                    {tipoReporte !== 'asistencia' && (
+                      <td className="p-6 text-center">
+                        <div className="flex flex-col items-center gap-2">
+                          <img 
+                            src={r.foto_local} 
+                            className="w-12 h-12 rounded-xl object-cover border border-white/10 shadow-md cursor-pointer" 
+                            onClick={() => window.open(r.foto_local, '_blank')}
+                          />
                           <button onClick={() => abrirMapa(r.ubicacion_gps)} className="text-[8px] font-black text-blue-400 uppercase">📍 Mapa</button>
-                        )}
-                      </div>
-                    </td>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
