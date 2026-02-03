@@ -8,7 +8,8 @@ export default function RegistrarVisita() {
   const [clientes, setClientes] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [gpsReady, setGpsReady] = useState(false)
-  const [status, setStatus] = useState('Iniciando sensores...')
+  const [fotoTomada, setFotoTomada] = useState(false)
+  const [status, setStatus] = useState('Inicie los sensores para comenzar')
   const [coords, setCoords] = useState('')
 
   const [form, setForm] = useState({ 
@@ -24,7 +25,6 @@ export default function RegistrarVisita() {
 
   useEffect(() => {
     fetchClientes()
-    iniciarSensores()
   }, [])
 
   const fetchClientes = async () => {
@@ -32,49 +32,64 @@ export default function RegistrarVisita() {
     if (data) setClientes(data)
   }
 
-  const iniciarSensores = async () => {
-    setStatus('Buscando GPS y Cámara... ⏳')
+  // Paso 1: Activar Cámara Trasera y GPS al presionar el botón
+  const activarCamaraYGPS = async () => {
+    setStatus('Activando Cámara y GPS... ⏳')
     try {
+      // Cámara Trasera (environment)
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: "environment" } 
       })
-      if (videoRef.current) videoRef.current.srcObject = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        videoRef.current.play()
+      }
+      
+      // GPS
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`)
+            setGpsReady(true)
+            setStatus('✅ Cámara y GPS Listos')
+          },
+          (err) => setStatus('⚠️ Error GPS: Actívelo en su celular'),
+          { enableHighAccuracy: true, timeout: 15000 }
+        )
+      }
     } catch (err) {
-      setStatus('Error: Cámara no disponible 📸')
+      setStatus('❌ Error: No se pudo acceder a la cámara')
     }
-
-    if (!navigator.geolocation) {
-      setStatus('GPS no soportado')
-      return
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`)
-        setGpsReady(true)
-        setStatus('✅ SISTEMA LISTO')
-      },
-      (err) => setStatus('Error: Activa el GPS ⚠️'),
-      { enableHighAccuracy: true, timeout: 15000 }
-    )
   }
 
-  const capturarYGuardar = async () => {
+  // Paso 2: Capturar la foto manualmente
+  const realizarCaptura = () => {
+    const canvas = canvasRef.current
+    const video = videoRef.current
+    if (!canvas || !video) return
+
+    canvas.width = 640
+    canvas.height = 480
+    canvas.getContext('2d')?.drawImage(video, 0, 0, 640, 480)
+    
+    // Pausamos el video para mostrar que la foto se tomó
+    video.pause()
+    setFotoTomada(true)
+    setStatus('📸 Foto capturada. Puede finalizar.')
+  }
+
+  // Paso 3: Guardar todo en Supabase
+  const finalizarVisita = async () => {
     if (!form.cliente_id) return alert("Seleccione un cliente")
     setLoading(true)
-    setStatus('Guardando visita...')
+    setStatus('Enviando registro... 🚀')
 
     try {
       const canvas = canvasRef.current
-      const video = videoRef.current
-      if (!canvas || !video) return
+      if (!canvas) return
 
-      canvas.width = 640
-      canvas.height = 480
-      canvas.getContext('2d')?.drawImage(video, 0, 0, 640, 480)
-      
       const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.8))
-      if (!blob) throw new Error("Error al capturar foto")
+      if (!blob) throw new Error("Error al procesar la imagen")
 
       const fileName = `visita_${Date.now()}.jpg`
       const { error: storageError } = await supabase.storage
@@ -85,107 +100,121 @@ export default function RegistrarVisita() {
       const { data: { publicUrl } } = supabase.storage.from('fotos_asistencia').getPublicUrl(fileName)
 
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error("No hay sesión activa")
-
-      // MAPEO EXACTO A TU TABLA 'visitas'
+      
       const { error: dbError } = await supabase.from('visitas').insert([{
-        empleado_id: session.user.id,
-        vendedor_id: session.user.id, // Mismo ID del que registra
+        empleado_id: session?.user.id,
+        vendedor_id: session?.user.id,
         cliente_id: form.cliente_id,
         motivo: form.motivo,
-        valor_transaccion: form.valor, // Coincide con tu base de datos
+        valor_transaccion: form.valor,
         proxima_visita: form.proxima_visita || null,
         observaciones: form.observaciones,
-        foto_local: publicUrl,        // Coincide con tu base de datos
-        ubicacion_gps: coords        // Coincide con tu base de datos
-        // fecha y hora se llenan solos por el default de tu tabla
+        foto_local: publicUrl,
+        ubicacion_gps: coords
       }])
 
       if (dbError) throw dbError
 
-      alert("✅ Visita registrada con éxito")
+      alert("✅ Visita guardada correctamente")
       router.push('/admin/dashboard')
 
     } catch (error: any) {
-      alert("Error en base de datos: " + error.message)
+      alert("Error: " + error.message)
     } finally {
       setLoading(false)
-      setStatus('Listo')
     }
   }
 
   return (
-    <div className="min-h-screen bg-white p-6 pb-24 text-slate-900">
-      <div className="max-w-md mx-auto space-y-6">
-        <h1 className="text-2xl font-black italic">REGISTRAR VISITA</h1>
-        <p className={`text-[10px] font-bold uppercase ${gpsReady ? 'text-emerald-500' : 'text-amber-500 animate-pulse'}`}>
-          {status}
-        </p>
+    <div className="min-h-screen bg-slate-50 p-6 pb-24 text-slate-900">
+      <div className="max-w-md mx-auto space-y-5">
+        <h1 className="text-2xl font-black italic tracking-tighter">REGISTRO DE VISITA</h1>
         
-        <div className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden shadow-lg">
-          <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-          <canvas ref={canvasRef} className="hidden" />
-          {!gpsReady && (
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-              <p className="text-white text-[10px] font-bold">ESPERANDO GPS...</p>
+        {/* Estado del sistema */}
+        <div className={`text-[10px] font-bold p-2 rounded-lg text-center uppercase tracking-widest ${gpsReady ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+          {status}
+        </div>
+        
+        {/* Contenedor de Cámara / Visualizador */}
+        <div className="relative w-full aspect-video bg-black rounded-[30px] overflow-hidden shadow-2xl border-4 border-white">
+          <video ref={videoRef} autoPlay playsInline className={`w-full h-full object-cover ${fotoTomada ? 'hidden' : 'block'}`} />
+          <canvas ref={canvasRef} className={`w-full h-full object-cover ${fotoTomada ? 'block' : 'hidden'}`} />
+          
+          {!videoRef.current?.srcObject && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
+              <button onClick={activarCamaraYGPS} className="bg-white text-slate-900 px-6 py-3 rounded-full font-black text-xs shadow-lg">
+                🎥 ABRIR CÁMARA TRASERA
+              </button>
             </div>
           )}
         </div>
 
-        <select 
-          className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold outline-none" 
-          onChange={e => setForm({...form, cliente_id: e.target.value})}
-        >
-          <option value="">Seleccionar Cliente...</option>
-          {clientes.map(c => (
-            <option key={c.id} value={c.id}>{c.nombre_comercial} - {c.nombre_fiscal}</option>
-          ))}
-        </select>
+        {/* Botón para tomar la foto (Solo si la cámara está activa) */}
+        {videoRef.current?.srcObject && !fotoTomada && (
+          <button 
+            onClick={realizarCaptura}
+            className="w-full bg-white border-2 border-slate-900 p-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 active:bg-slate-100"
+          >
+            📸 TOMAR FOTO DEL LOCAL
+          </button>
+        )}
 
-        <select 
-          className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold text-slate-700 outline-none" 
-          onChange={e => setForm({...form, motivo: e.target.value})}
-          value={form.motivo}
-        >
-          {/* Mantenemos exactamente los permitidos por tu CHECK en SQL */}
-          <option value="Visita">Visita</option>
-          <option value="Venta">Venta</option>
-          <option value="Cobro">Cobro</option>
-          <option value="Cliente Nuevo">Cliente Nuevo</option>
-        </select>
+        {/* Formulario (Solo visible después de seleccionar cliente) */}
+        <div className="space-y-4">
+          <select 
+            className="w-full p-4 bg-white rounded-2xl border-none font-bold shadow-sm outline-none" 
+            onChange={e => setForm({...form, cliente_id: e.target.value})}
+          >
+            <option value="">Seleccione el Cliente...</option>
+            {clientes.map(c => (
+              <option key={c.id} value={c.id}>{c.nombre_comercial} - {c.nombre_fiscal}</option>
+            ))}
+          </select>
 
-        <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
-          <label className="text-[10px] font-black text-blue-400 uppercase">Valor Recaudado ($)</label>
-          <input 
-            type="number" 
-            placeholder="0.00"
-            className="w-full bg-transparent text-xl font-black text-blue-600 outline-none" 
-            onChange={e => setForm({...form, valor: Number(e.target.value)})} 
+          <div className="grid grid-cols-2 gap-3">
+            <select 
+              className="p-4 bg-white rounded-2xl border-none font-bold outline-none shadow-sm"
+              onChange={e => setForm({...form, motivo: e.target.value})}
+            >
+              <option value="Visita">Visita</option>
+              <option value="Venta">Venta</option>
+              <option value="Cobro">Cobro</option>
+              <option value="Cliente Nuevo">Cliente Nuevo</option>
+            </select>
+            <input 
+              type="number" 
+              placeholder="Valor $" 
+              className="p-4 bg-blue-50 rounded-2xl border-none font-black text-blue-600 shadow-sm outline-none"
+              onChange={e => setForm({...form, valor: Number(e.target.value)})}
+            />
+          </div>
+
+          <div className="bg-white p-4 rounded-2xl shadow-sm">
+            <label className="text-[10px] font-black text-slate-400 uppercase">Próxima Visita</label>
+            <input type="date" className="w-full bg-transparent font-bold outline-none mt-1" onChange={e => setForm({...form, proxima_visita: e.target.value})} />
+          </div>
+
+          <textarea 
+            placeholder="Observaciones de la visita..." 
+            className="w-full p-4 bg-white rounded-2xl border-none min-h-[80px] shadow-sm outline-none" 
+            onChange={e => setForm({...form, observaciones: e.target.value})} 
           />
         </div>
 
-        <div>
-          <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Próxima Visita</label>
-          <input 
-            type="date" 
-            className="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold outline-none" 
-            onChange={e => setForm({...form, proxima_visita: e.target.value})} 
-          />
-        </div>
-
-        <textarea 
-          placeholder="Observaciones de la visita..." 
-          className="w-full p-4 bg-gray-50 rounded-2xl border-none min-h-[100px] outline-none" 
-          onChange={e => setForm({...form, observaciones: e.target.value})} 
-        />
-
+        {/* Botón Finalizar: Solo se activa si hay Foto + GPS + Cliente */}
         <button 
-          onClick={capturarYGuardar} 
-          disabled={loading || !form.cliente_id || !gpsReady} 
-          className="w-full bg-blue-600 text-white p-6 rounded-3xl font-black text-lg shadow-xl active:scale-95 transition-all disabled:opacity-30"
+          onClick={finalizarVisita} 
+          disabled={loading || !fotoTomada || !gpsReady || !form.cliente_id} 
+          className="w-full bg-slate-900 text-white p-6 rounded-[30px] font-black text-lg shadow-xl active:scale-95 transition-all disabled:opacity-20"
         >
           {loading ? 'GUARDANDO...' : '🚀 FINALIZAR VISITA'}
         </button>
+
+        {fotoTomada && (
+          <button onClick={() => {setFotoTomada(false); activarCamaraYGPS();}} className="w-full text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            🔄 Repetir Foto
+          </button>
+        )}
       </div>
     </div>
   )
