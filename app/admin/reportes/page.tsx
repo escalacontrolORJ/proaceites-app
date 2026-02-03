@@ -1,166 +1,176 @@
 'use client'
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import { useRouter } from 'next/navigation'
+import AdminNav from '@/components/AdminNav'
 
-export default function DashboardPage() {
+export default function ReporteAdministrativo() {
+  const [filas, setFilas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [gpsReady, setGpsReady] = useState(false)
-  const [cameraReady, setCameraReady] = useState(false)
-  const [coords, setCoords] = useState('')
-  const [yaEntro, setYaEntro] = useState(false)
-  const [status, setStatus] = useState('Iniciando...')
-  
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const router = useRouter()
+  const [fechaDesde, setFechaDesde] = useState(new Date().toISOString().split('T')[0])
+  const [fechaHasta, setFechaHasta] = useState(new Date().toISOString().split('T')[0])
 
   useEffect(() => {
-    const protegerRuta = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.replace('/login')
-        return
-      }
-      const estadoLocal = localStorage.getItem('asistencia_estado')
-      if (estadoLocal === 'INGRESO_REALIZADO') setYaEntro(true)
-      setLoading(false)
-      iniciarSensores()
-    }
-    protegerRuta()
-  }, [])
+    fetchData()
+  }, [fechaDesde, fechaHasta])
 
-  const handleSignOut = async () => {
-    if (!confirm("¿Cerrar sesión?")) return
-    await supabase.auth.signOut()
-    localStorage.removeItem('asistencia_estado')
-    router.replace('/login')
-  }
-
-  const iniciarSensores = async () => {
-    setGpsReady(false)
-    setStatus('Buscando GPS...')
-    
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setCoords(`(${pos.coords.latitude}, ${pos.coords.longitude})`)
-          setGpsReady(true)
-          setStatus('GPS Listo')
-          iniciarCamara()
-        },
-        (err) => {
-          setStatus('ERROR: Activa el GPS y recarga')
-          console.error(err)
-        },
-        { enableHighAccuracy: true }
-      )
-    }
-  }
-
-  const iniciarCamara = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user' } 
-      })
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        setCameraReady(true)
-      }
-    } catch (err) {
-      setStatus('ERROR: Activa la cámara')
-    }
-  }
-
-  const capturarYEnviar = async (tipo: 'INGRESO' | 'SALIDA') => {
+  async function fetchData() {
     setLoading(true)
-    setStatus(`Guardando ${tipo}...`)
-
     try {
-      const video = videoRef.current
-      const canvas = canvasRef.current
-      if (!video || !canvas) return
+      const { data: emps } = await supabase.from('empleados').select('id, nombres')
+      const nombresMap = (emps || []).reduce((acc: any, cur: any) => ({ ...acc, [cur.id]: cur.nombres }), {})
 
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      canvas.getContext('2d')?.drawImage(video, 0, 0)
-      const fotoBase64 = canvas.toDataURL('image/jpeg', 0.5)
+      const { data: asistencia, error } = await supabase
+        .from('asistencia')
+        .select('empleado_id, fecha, fecha_hora, tipo_registro, foto, geolocalizacion')
+        .gte('fecha', fechaDesde)
+        .lte('fecha', fechaHasta)
+        .order('fecha_hora', { ascending: true })
 
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error("Sesion expirada")
+      if (error) throw error
 
-      const datos = {
-        empleado_id: session.user.id,
-        tipo_registro: tipo,
-        fecha: new Date().toISOString().split('T')[0],
-        geolocalizacion: coords,
-        foto: fotoBase64,
-        fecha_hora: new Date().toISOString()
-      }
+      const agrupados: any = {}
 
-      // INTENTO DE INSERT CON VALIDACIÓN DE ERROR
-      const { error: dbError } = await supabase.from('asistencia').insert([datos])
+      asistencia?.forEach(reg => {
+        const key = `${reg.empleado_id}_${reg.fecha}`
+        if (!agrupados[key]) {
+          agrupados[key] = {
+            id: key,
+            nombre: nombresMap[reg.empleado_id] || 'Usuario',
+            fecha: reg.fecha,
+            entrada: null,
+            salida: null,
+            horas: '0.00'
+          }
+        }
 
-      if (dbError) {
-        console.error("Error Supabase:", dbError)
-        alert(`NO SE GUARDÓ EN BASE DE DATOS: ${dbError.message}`)
-        throw dbError
-      }
+        const d = new Date(reg.fecha_hora)
+        d.setHours(d.getHours() - 5) // Ajuste Ecuador
+        const horaStr = d.getUTCHours().toString().padStart(2, '0') + ':' + 
+                        d.getUTCMinutes().toString().padStart(2, '0')
 
-      // Si no hubo error, actualizamos el estado local
-      if (tipo === 'INGRESO') {
-        localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
-        setYaEntro(true)
-      } else {
-        localStorage.removeItem('asistencia_estado')
-        setYaEntro(false)
-      }
+        const datosEvento = {
+          hora: horaStr,
+          foto: reg.foto,
+          gps: reg.geolocalizacion,
+          raw_time: d.getTime()
+        }
 
-      setStatus(`¡${tipo} EXITOSO!`)
-      alert(`${tipo} registrado correctamente en el servidor.`)
+        const tipo = reg.tipo_registro?.toUpperCase()
+        if (tipo === 'INGRESO') {
+          agrupados[key].entrada = datosEvento
+        } else if (tipo === 'SALIDA') {
+          agrupados[key].salida = datosEvento
+        }
 
-    } catch (err: any) {
+        if (agrupados[key].entrada && agrupados[key].salida) {
+          const diffMs = agrupados[key].salida.raw_time - agrupados[key].entrada.raw_time
+          agrupados[key].horas = (diffMs / 3600000).toFixed(2)
+        }
+      })
+
+      setFilas(Object.values(agrupados).reverse())
+    } catch (err) {
       console.error(err)
-      setStatus('Error al registrar')
-      alert("Error crítico: " + (err.message || "Fallo de conexión"))
     } finally {
       setLoading(false)
     }
   }
 
+  const abrirMapa = (gps: any) => {
+    if (!gps) return alert("Sin ubicación")
+    const coords = gps.toString().replace(/[() ]/g, '')
+    window.open(`https://www.google.com/maps?q=${coords}`, '_blank')
+  }
+
   return (
-    <div className=\"min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white\">
-      <div className=\"w-full max-w-sm flex justify-between items-center mb-8\">
-        <div>
-          <h1 className=\"text-2xl font-black italic tracking-tighter uppercase\">Proaceites</h1>
-          <p className=\"text-[10px] font-bold text-slate-500 uppercase tracking-widest\">Control Operativo</p>
-        </div>
-        <button onClick={handleSignOut} className=\"bg-slate-900 p-3 rounded-2xl border border-slate-800 text-slate-400 hover:text-white\">
-          <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"2.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\"><path d=\"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4\"/><polyline points=\"16 17 21 12 16 7\"/><line x1=\"21\" y1=\"12\" x2=\"9\" y2=\"12\"/></svg>
-        </button>
-      </div>
-
-      <div className=\"relative w-full max-w-sm aspect-[3/4] bg-black rounded-[40px] overflow-hidden border-2 border-slate-800 shadow-2xl mb-8\">
-        <video ref={videoRef} autoPlay playsInline className=\"w-full h-full object-cover mirror\" />
-        <canvas ref={canvasRef} className=\"hidden\" />
-        
-        {!gpsReady && (
-          <div className=\"absolute inset-0 bg-black/70 flex flex-col items-center justify-center p-8 text-center\">
-            <p className=\"text-xs font-bold text-amber-400 uppercase mb-4\">{status}</p>
+    <div className="min-h-screen bg-slate-950 text-white font-sans">
+      <AdminNav />
+      <main className="p-4 md:p-8 max-w-7xl mx-auto">
+        <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 bg-slate-900/50 p-6 rounded-3xl border border-white/5">
+          <h1 className="text-xl font-black italic uppercase tracking-tighter">Reporte Administrativo</h1>
+          <div className="flex gap-2">
+            <input 
+              type="date" 
+              value={fechaDesde} 
+              onChange={e => setFechaDesde(e.target.value)} 
+              className="bg-slate-800 border-none rounded-xl p-2 text-xs font-bold outline-none" 
+            />
+            <input 
+              type="date" 
+              value={fechaHasta} 
+              onChange={e => setFechaHasta(e.target.value)} 
+              className="bg-slate-800 border-none rounded-xl p-2 text-xs font-bold outline-none" 
+            />
           </div>
-        )}
-      </div>
+        </div>
 
-      <div className=\"w-full max-w-sm space-y-4\">
-        <button 
-          onClick={() => capturarYEnviar(yaEntro ? 'SALIDA' : 'INGRESO')} 
-          disabled={!gpsReady || loading} 
-          className={`w-full p-8 rounded-[30px] font-black text-xl transition-all shadow-xl disabled:opacity-10 ${yaEntro ? 'bg-rose-500 shadow-rose-900/40' : 'bg-emerald-500 shadow-emerald-900/40'} text-white active:scale-95`}
-        >
-          {loading ? '...' : (yaEntro ? 'REGISTRAR SALIDA' : 'REGISTRAR INGRESO')}
-        </button>
-        <p className=\"text-center text-[10px] font-bold text-slate-600 uppercase tracking-widest\">{status}</p>
-      </div>
+        <div className="bg-slate-900 rounded-[35px] border border-white/5 overflow-hidden shadow-2xl">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-white/5 text-[10px] font-black uppercase text-slate-500 tracking-widest">
+                  <th className="p-6">Colaborador</th>
+                  <th className="p-6">Ingreso</th>
+                  <th className="p-6">Salida</th>
+                  <th className="p-6 text-center">Horas</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {filas.map((r: any) => (
+                  <tr key={r.id} className="hover:bg-white/[0.02] transition-colors">
+                    <td className="p-6">
+                      <p className="font-black text-white italic text-lg leading-tight">{r.nombre}</p>
+                      <p className="text-[10px] font-bold text-slate-500">{r.fecha}</p>
+                    </td>
+                    <td className="p-6">
+                      {r.entrada ? (
+                        <div className="flex items-center gap-4">
+                          <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-white/10 overflow-hidden flex items-center justify-center">
+                            {r.entrada.foto ? <img src={r.entrada.foto} alt="E" className="w-full h-full object-cover" /> : <span className="text-[8px] text-slate-600 tracking-tighter text-center px-1">SIN FOTO</span>}
+                          </div>
+                          <div>
+                            <p className="text-emerald-400 font-black text-xl leading-none mb-1">{r.entrada.hora}</p>
+                            <button onClick={() => abrirMapa(r.entrada.gps)} className="text-[9px] font-black text-slate-500 hover:text-white uppercase">📍 GPS</button>
+                          </div>
+                        </div>
+                      ) : <span className="text-slate-700 italic">--:--</span>}
+                    </td>
+                    <td className="p-6">
+                      {r.salida ? (
+                        <div className="flex items-center gap-4">
+                          <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-white/10 overflow-hidden flex items-center justify-center">
+                            {r.salida.foto ? <img src={r.salida.foto} alt="S" className="w-full h-full object-cover" /> : <span className="text-[8px] text-slate-600 tracking-tighter text-center px-1">SIN FOTO</span>}
+                          </div>
+                          <div>
+                            <p className="text-rose-400 font-black text-xl leading-none mb-1">{r.salida.hora}</p>
+                            <button onClick={() => abrirMapa(r.salida.gps)} className="text-[9px] font-black text-slate-500 hover:text-white uppercase">📍 GPS</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-amber-500 rounded-full animate-ping"></span>
+                          <span className="text-amber-500 font-black text-[10px] uppercase">Laborando...</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-6 text-center">
+                      <div className="inline-block bg-slate-950 px-6 py-3 rounded-3xl border border-white/5 shadow-inner">
+                        <p className="text-2xl font-black text-white leading-none">{r.horas}</p>
+                        <p className="text-[9px] font-bold text-slate-600 uppercase mt-1 tracking-widest">Jornada</p>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {filas.length === 0 && !loading && (
+            <div className="p-24 text-center">
+              <p className="text-slate-600 font-bold italic text-lg uppercase tracking-tighter">No hay registros</p>
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   )
 }

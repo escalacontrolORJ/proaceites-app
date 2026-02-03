@@ -39,145 +39,127 @@ export default function DashboardPage() {
 
   const iniciarSensores = async () => {
     setGpsReady(false)
-    setStatus('Buscando señal GPS... 📡')
+    setStatus('Buscando GPS...')
     
-    // Cámara
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setCoords(`(${pos.coords.latitude}, ${pos.coords.longitude})`)
+          setGpsReady(true)
+          setStatus('GPS Listo')
+          iniciarCamara()
+        },
+        (err) => {
+          setStatus('ERROR: Activa el GPS y recarga')
+          console.error(err)
+        },
+        { enableHighAccuracy: true }
+      )
+    }
+  }
+
+  const iniciarCamara = async () => {
     try {
-      if (!cameraReady) {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          setCameraReady(true)
-        }
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user' } 
+      })
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        setCameraReady(true)
       }
     } catch (err) {
-      setStatus('ERROR: Activa la cámara 📸')
+      setStatus('ERROR: Activa la cámara')
     }
-
-    // GPS con lógica de reintento y menor timeout inicial
-    if (!navigator.geolocation) {
-      setStatus('GPS no soportado')
-      return
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`)
-        setGpsReady(true)
-        setStatus('✅ SISTEMA LISTO')
-      },
-      (err) => {
-        console.error("Error GPS detallado:", err)
-        if (err.code === 1) {
-          setStatus('ERROR: Permiso denegado ⚠️')
-        } else if (err.code === 3) {
-          setStatus('ERROR: Tiempo agotado. ¿Estás bajo techo? 🏠')
-        } else {
-          setStatus('ERROR: GPS no disponible ⚠️')
-        }
-      },
-      { 
-        enableHighAccuracy: false, // Bajamos la precisión inicial para conectar rápido
-        timeout: 10000, 
-        maximumAge: 0 
-      }
-    )
   }
 
   const capturarYEnviar = async (tipo: 'INGRESO' | 'SALIDA') => {
-    if (!gpsReady || !cameraReady) return
     setLoading(true)
     setStatus(`Guardando ${tipo}...`)
 
     try {
-      const canvas = canvasRef.current
       const video = videoRef.current
-      if (!canvas || !video) return
+      const canvas = canvasRef.current
+      if (!video || !canvas) return
+
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
       canvas.getContext('2d')?.drawImage(video, 0, 0)
-      
-      const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.7))
-      if (!blob) throw new Error("Error al capturar foto")
-
-      const fileName = `${tipo.toLowerCase()}_${Date.now()}.jpg`
-      await supabase.storage.from('fotos_asistencia').upload(fileName, blob)
-      const { data: { publicUrl } } = supabase.storage.from('fotos_asistencia').getPublicUrl(fileName)
+      const fotoBase64 = canvas.toDataURL('image/jpeg', 0.5)
 
       const { data: { session } } = await supabase.auth.getSession()
-      const hoy = new Date().toISOString().split('T')[0]
+      if (!session) throw new Error("Sesion expirada")
 
-      if (tipo === 'INGRESO') {
-        await supabase.from('asistencia').insert([{
-          empleado_id: session?.user.id,
-          fecha: hoy,
-          hora_ingreso: new Date().toLocaleTimeString(),
-          foto_ingreso: publicUrl,
-          ubicacion_ingreso: coords
-        }])
-        setYaEntro(true)
-        localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
-      } else {
-        await supabase.from('asistencia').update({
-          hora_salida: new Date().toLocaleTimeString(),
-          foto_salida: publicUrl,
-          ubicacion_salida: coords
-        }).match({ empleado_id: session?.user.id, fecha: hoy })
-        setYaEntro(false)
-        localStorage.removeItem('asistencia_estado')
+      const datos = {
+        empleado_id: session.user.id,
+        tipo_registro: tipo,
+        fecha: new Date().toISOString().split('T')[0],
+        geolocalizacion: coords,
+        foto: fotoBase64,
+        fecha_hora: new Date().toISOString()
       }
-      alert(`${tipo} registrado ✅`)
-      setStatus('✅ Listo')
-    } catch (error: any) {
-      alert("Error: " + error.message)
+
+      // INTENTO DE INSERT CON VALIDACIÓN DE ERROR
+      const { error: dbError } = await supabase.from('asistencia').insert([datos])
+
+      if (dbError) {
+        console.error("Error Supabase:", dbError)
+        alert(`NO SE GUARDÓ EN BASE DE DATOS: ${dbError.message}`)
+        throw dbError
+      }
+
+      // Si no hubo error, actualizamos el estado local
+      if (tipo === 'INGRESO') {
+        localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
+        setYaEntro(true)
+      } else {
+        localStorage.removeItem('asistencia_estado')
+        setYaEntro(false)
+      }
+
+      setStatus(`¡${tipo} EXITOSO!`)
+      alert(`${tipo} registrado correctamente en el servidor.`)
+
+    } catch (err: any) {
+      console.error(err)
+      setStatus('Error al registrar')
+      alert("Error crítico: " + (err.message || "Fallo de conexión"))
     } finally {
       setLoading(false)
     }
   }
 
-  if (loading && status === 'Iniciando...') return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white">PROACEITES...</div>
-
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center p-6">
-      <div className="w-full max-w-sm flex justify-between items-center mb-6">
+    <div className=\"min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white\">
+      <div className=\"w-full max-w-sm flex justify-between items-center mb-8\">
         <div>
-          <h1 className="text-2xl font-black italic tracking-tighter text-emerald-500">PROACEITES</h1>
-          <p className={`text-[10px] font-bold uppercase ${gpsReady ? 'text-emerald-400' : 'text-amber-400 animate-pulse'}`}>
-            {status}
-          </p>
+          <h1 className=\"text-2xl font-black italic tracking-tighter uppercase\">Proaceites</h1>
+          <p className=\"text-[10px] font-bold text-slate-500 uppercase tracking-widest\">Control Operativo</p>
         </div>
-        <button onClick={handleSignOut} className="bg-rose-500/20 text-rose-500 text-[10px] font-black px-4 py-2 rounded-full border border-rose-500/50">SALIR</button>
+        <button onClick={handleSignOut} className=\"bg-slate-900 p-3 rounded-2xl border border-slate-800 text-slate-400 hover:text-white\">
+          <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"2.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\"><path d=\"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4\"/><polyline points=\"16 17 21 12 16 7\"/><line x1=\"21\" y1=\"12\" x2=\"9\" y2=\"12\"/></svg>
+        </button>
       </div>
 
-      <div className="relative w-full max-w-sm aspect-[3/4] bg-black rounded-[40px] overflow-hidden border-2 border-slate-800 shadow-2xl mb-8">
-        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover mirror" />
-        <canvas ref={canvasRef} className="hidden" />
+      <div className=\"relative w-full max-w-sm aspect-[3/4] bg-black rounded-[40px] overflow-hidden border-2 border-slate-800 shadow-2xl mb-8\">
+        <video ref={videoRef} autoPlay playsInline className=\"w-full h-full object-cover mirror\" />
+        <canvas ref={canvasRef} className=\"hidden\" />
         
         {!gpsReady && (
-          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center p-8 text-center">
-            <p className="text-xs font-bold text-amber-400 uppercase mb-4 leading-relaxed">
-              {status}
-            </p>
-            {status.includes('ERROR') && (
-              <button 
-                onClick={iniciarSensores}
-                className="bg-white text-black text-[10px] font-black px-6 py-3 rounded-full hover:bg-emerald-400 transition-colors"
-              >
-                🔄 REINTENTAR CONEXIÓN
-              </button>
-            )}
+          <div className=\"absolute inset-0 bg-black/70 flex flex-col items-center justify-center p-8 text-center\">
+            <p className=\"text-xs font-bold text-amber-400 uppercase mb-4\">{status}</p>
           </div>
         )}
       </div>
 
-      <div className="w-full max-w-sm space-y-4">
+      <div className=\"w-full max-w-sm space-y-4\">
         <button 
           onClick={() => capturarYEnviar(yaEntro ? 'SALIDA' : 'INGRESO')} 
           disabled={!gpsReady || loading} 
-          className={`w-full p-8 rounded-[30px] font-black text-xl transition-all shadow-xl disabled:opacity-10 ${yaEntro ? 'bg-rose-500 shadow-rose-500/20' : 'bg-emerald-500 shadow-emerald-500/20'}`}
+          className={`w-full p-8 rounded-[30px] font-black text-xl transition-all shadow-xl disabled:opacity-10 ${yaEntro ? 'bg-rose-500 shadow-rose-900/40' : 'bg-emerald-500 shadow-emerald-900/40'} text-white active:scale-95`}
         >
-          {loading ? 'ENVIANDO...' : yaEntro ? '🏁 MARCAR SALIDA' : '📸 MARCAR ENTRADA'}
+          {loading ? '...' : (yaEntro ? 'REGISTRAR SALIDA' : 'REGISTRAR INGRESO')}
         </button>
+        <p className=\"text-center text-[10px] font-bold text-slate-600 uppercase tracking-widest\">{status}</p>
       </div>
     </div>
   )
