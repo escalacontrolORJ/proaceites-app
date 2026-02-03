@@ -31,7 +31,7 @@ export default function DashboardPage() {
   }, [router])
 
   const handleSignOut = async () => {
-    if (!confirm('¿Cerrar sesión?')) return
+    if (!confirm("¿Cerrar sesión?")) return
     await supabase.auth.signOut()
     localStorage.removeItem('asistencia_estado')
     router.replace('/login')
@@ -41,7 +41,7 @@ export default function DashboardPage() {
     setGpsReady(false)
     setStatus('Buscando GPS...')
     
-    if ('geolocation' in navigator) {
+    if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           setCoords(`(${pos.coords.latitude}, ${pos.coords.longitude})`)
@@ -72,9 +72,9 @@ export default function DashboardPage() {
     }
   }
 
-  const capturarYEnviar = async (tipo: 'INGRESO' | 'SALIDA') => {
+  const capturarYEnviar = async (tipoOriginal: 'INGRESO' | 'SALIDA') => {
     setLoading(true)
-    setStatus(`Guardando ${tipo}...`)
+    setStatus(`Guardando ${tipoOriginal}...`)
 
     try {
       const video = videoRef.current
@@ -87,11 +87,14 @@ export default function DashboardPage() {
       const fotoBase64 = canvas.toDataURL('image/jpeg', 0.5)
 
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error('Sesion expirada')
+      if (!session) throw new Error("Sesión expirada")
+
+      // CORRECCIÓN CLAVE: Convertir a minúsculas para cumplir con la Check Constraint de la DB
+      const tipoParaDB = tipoOriginal.toLowerCase()
 
       const datos = {
         empleado_id: session.user.id,
-        tipo_registro: tipo,
+        tipo_registro: tipoParaDB, 
         fecha: new Date().toISOString().split('T')[0],
         geolocalizacion: coords,
         foto: fotoBase64,
@@ -101,11 +104,12 @@ export default function DashboardPage() {
       const { error: dbError } = await supabase.from('asistencia').insert([datos])
 
       if (dbError) {
-        alert(`ERROR DB: ${dbError.message}`)
+        console.error("Error Supabase:", dbError)
+        alert(`ERROR AL GUARDAR: ${dbError.message}`)
         throw dbError
       }
 
-      if (tipo === 'INGRESO') {
+      if (tipoOriginal === 'INGRESO') {
         localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
         setYaEntro(true)
       } else {
@@ -113,27 +117,27 @@ export default function DashboardPage() {
         setYaEntro(false)
       }
 
-      setStatus(`¡${tipo} EXITOSO!`)
-      alert(`${tipo} registrado correctamente.`)
+      setStatus(`¡${tipoOriginal} EXITOSO!`)
+      alert(`${tipoOriginal} registrado correctamente.`)
 
     } catch (err: any) {
       console.error(err)
       setStatus('Error al registrar')
-      alert('Error: ' + (err.message || 'Fallo de conexión'))
+      alert("Error: " + (err.message || "Fallo de conexión"))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white">
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white font-sans">
       <div className="w-full max-w-sm flex justify-between items-center mb-8">
         <div>
           <h1 className="text-2xl font-black italic tracking-tighter uppercase">Proaceites</h1>
           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Control Operativo</p>
         </div>
-        <button onClick={handleSignOut} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 text-slate-400 hover:text-white">
-          Cerrar
+        <button onClick={handleSignOut} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 text-slate-400 hover:text-white transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         </button>
       </div>
 
@@ -143,7 +147,7 @@ export default function DashboardPage() {
         
         {!gpsReady && (
           <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center p-8 text-center">
-            <p className="text-xs font-bold text-amber-400 uppercase">{status}</p>
+            <p className="text-xs font-bold text-amber-400 uppercase mb-4">{status}</p>
           </div>
         )}
       </div>
@@ -152,7 +156,7 @@ export default function DashboardPage() {
         <button 
           onClick={() => capturarYEnviar(yaEntro ? 'SALIDA' : 'INGRESO')} 
           disabled={!gpsReady || loading} 
-          className={`w-full p-8 rounded-[30px] font-black text-xl transition-all shadow-xl ${yaEntro ? 'bg-rose-500' : 'bg-emerald-500'} text-white active:scale-95 disabled:opacity-50`}
+          className={`w-full p-8 rounded-[30px] font-black text-xl transition-all shadow-xl active:scale-95 disabled:opacity-30 ${yaEntro ? 'bg-rose-500 shadow-rose-900/40' : 'bg-emerald-500 shadow-emerald-900/40'}`}
         >
           {loading ? '...' : (yaEntro ? 'REGISTRAR SALIDA' : 'REGISTRAR INGRESO')}
         </button>
