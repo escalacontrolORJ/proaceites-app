@@ -3,23 +3,39 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import AdminNav from '@/components/AdminNav'
 import jsPDF from 'jspdf'
-import 'jspdf-autotable'
+import autoTable from 'jspdf-autotable'
 
 export default function ReporteAdministrativo() {
   const [tipoReporte, setTipoReporte] = useState('asistencia') 
   const [filas, setFilas] = useState<any[]>([])
+  const [filasFiltradas, setFilasFiltradas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [fechaDesde, setFechaDesde] = useState(new Date().toISOString().split('T')[0])
   const [fechaHasta, setFechaHasta] = useState(new Date().toISOString().split('T')[0])
+  
+  // Estados para filtros
+  const [empleados, setEmpleados] = useState<any[]>([])
+  const [clientes, setClientes] = useState<any[]>([])
+  const [filtroEmpleado, setFiltroEmpleado] = useState('')
+  const [filtroCliente, setFiltroCliente] = useState('')
 
   useEffect(() => {
     fetchData()
   }, [fechaDesde, fechaHasta, tipoReporte])
 
+  useEffect(() => {
+    aplicarFiltros()
+  }, [filtroEmpleado, filtroCliente, filas])
+
   async function fetchData() {
     setLoading(true)
     try {
+      // Cargar Catálogos para filtros
       const { data: emps } = await supabase.from('empleados').select('id, nombres')
+      const { data: clis } = await supabase.from('clientes').select('id, nombre_comercial')
+      setEmpleados(emps || [])
+      setClientes(clis || [])
+      
       const nombresMap = (emps || []).reduce((acc: any, cur: any) => ({ ...acc, [cur.id]: cur.nombres }), {})
 
       if (tipoReporte === 'asistencia') {
@@ -35,7 +51,14 @@ export default function ReporteAdministrativo() {
         asistencia?.forEach(reg => {
           const key = `${reg.empleado_id}_${reg.fecha}`
           if (!agrupados[key]) {
-            agrupados[key] = { id: key, nombre: nombresMap[reg.empleado_id] || 'Usuario', fecha: reg.fecha, entrada: null, salida: null, horas: '0.00' }
+            agrupados[key] = { 
+              empleado_id: reg.empleado_id,
+              nombre: nombresMap[reg.empleado_id] || 'Usuario', 
+              fecha: reg.fecha, 
+              entrada: null, 
+              salida: null, 
+              horas: '0.00' 
+            }
           }
           const d = new Date(reg.fecha_hora); d.setHours(d.getHours() - 5)
           const horaStr = d.getUTCHours().toString().padStart(2, '0') + ':' + d.getUTCMinutes().toString().padStart(2, '0')
@@ -60,42 +83,53 @@ export default function ReporteAdministrativo() {
         if (error) throw error
         setFilas((visitas || []).map(v => ({
           ...v,
-          nombre_vendedor: nombresMap[v.vendedor_id] || nombresMap[v.empleado_id] || 'Vendedor S/N',
-          nombre_cliente: v.clientes?.nombre_comercial || 'S/N'
+          nombre_vendedor: nombresMap[v.vendedor_id] || nombresMap[v.empleado_id] || 'S/N',
+          nombre_cliente: v.clientes?.nombre_comercial || 'Cliente no encontrado'
         })))
       }
     } catch (err) { console.error(err) } finally { setLoading(false) }
+  }
+
+  function aplicarFiltros() {
+    let temp = [...filas]
+    if (filtroEmpleado) {
+      temp = temp.filter(f => (f.empleado_id === filtroEmpleado || f.vendedor_id === filtroEmpleado))
+    }
+    if (filtroCliente && tipoReporte !== 'asistencia') {
+      temp = temp.filter(f => f.cliente_id === filtroCliente)
+    }
+    setFilasFiltradas(temp)
   }
 
   const exportarExcel = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
     if (tipoReporte === 'asistencia') {
       csvContent += "Empleado,Fecha,Entrada,Salida,Horas\n";
-      filas.forEach(r => csvContent += `${r.nombre},${r.fecha},${r.entrada?.hora || ''},${r.salida?.hora || ''},${r.horas}\n`);
+      filasFiltradas.forEach(r => csvContent += `${r.nombre},${r.fecha},${r.entrada?.hora || ''},${r.salida?.hora || ''},${r.horas}\n`);
     } else {
       csvContent += "Vendedor,Cliente,Motivo,Valor,Observaciones,ProximaVisita\n";
-      filas.forEach(r => csvContent += `${r.nombre_vendedor},${r.nombre_cliente},${r.motivo},${r.valor_transaccion},${r.observaciones},${r.proxima_visita}\n`);
+      filasFiltradas.forEach(r => csvContent += `${r.nombre_vendedor},${r.nombre_cliente},${r.motivo},${r.valor_transaccion},${r.observaciones},${r.proxima_visita}\n`);
     }
     window.open(encodeURI(csvContent));
   }
 
   const exportarPDF = () => {
     const doc = new jsPDF()
-    const titulo = `Reporte de ${tipoReporte.toUpperCase()}`
-    doc.text(titulo, 14, 15)
-    
+    doc.text(`Reporte de ${tipoReporte.toUpperCase()}`, 14, 15)
+    doc.setFontSize(10)
+    doc.text(`Periodo: ${fechaDesde} al ${fechaHasta}`, 14, 22)
+
     const headers = tipoReporte === 'asistencia' 
       ? [["Empleado", "Fecha", "Entrada", "Salida", "Horas"]]
-      : [["Vendedor", "Cliente", "Motivo", "Monto", "Prox. Visita"]]
+      : [["Vendedor", "Cliente", "Motivo", "Monto", "Fecha", "Prox. Visita"]]
     
-    const data = filas.map(r => tipoReporte === 'asistencia'
+    const data = filasFiltradas.map(r => tipoReporte === 'asistencia'
       ? [r.nombre, r.fecha, r.entrada?.hora || '', r.salida?.hora || '', r.horas]
-      : [r.nombre_vendedor, r.nombre_cliente, r.motivo, r.valor_transaccion, r.proxima_visita]
+      : [r.nombre_vendedor, r.nombre_cliente, r.motivo, r.valor_transaccion, r.fecha, r.proxima_visita]
     )
 
-    //@ts-ignore
-    doc.autoTable({ head: headers, body: data, startY: 20 })
-    doc.save(`Reporte_${tipoReporte}_${new Date().getTime()}.pdf`)
+    autoTable(doc, { head: headers, body: data, startY: 30 })
+    doc.save(`Reporte_${tipoReporte}.pdf`)
   }
 
   const abrirMapa = (gps: any) => {
@@ -113,7 +147,7 @@ export default function ReporteAdministrativo() {
             <h1 className="text-xl font-black italic uppercase tracking-tighter">Panel Administrativo</h1>
             <select 
               value={tipoReporte}
-              onChange={(e) => setTipoReporte(e.target.value)}
+              onChange={(e) => { setTipoReporte(e.target.value); setFiltroCliente(''); setFiltroEmpleado(''); }}
               className="bg-slate-800 text-emerald-400 border-none rounded-xl p-3 text-sm font-black outline-none w-full md:w-72"
             >
               <option value="asistencia">📋 REPORTE ASISTENCIA</option>
@@ -121,19 +155,37 @@ export default function ReporteAdministrativo() {
               <option value="proximas">⏳ AGENDA PRÓXIMAS VISITAS</option>
             </select>
           </div>
-          <div className="flex flex-wrap gap-4 items-end">
-            <div className="flex-1 min-w-[140px]">
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <div>
               <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Desde</p>
               <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold shadow-inner" />
             </div>
-            <div className="flex-1 min-w-[140px]">
+            <div>
               <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Hasta</p>
               <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold shadow-inner" />
             </div>
-            <div className="flex gap-2">
-              <button onClick={exportarExcel} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-lg">Excel</button>
-              <button onClick={exportarPDF} className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-lg">PDF</button>
+            <div>
+              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Filtrar Empleado</p>
+              <select value={filtroEmpleado} onChange={e => setFiltroEmpleado(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold">
+                <option value="">TODOS LOS EMPLEADOS</option>
+                {empleados.map(e => <option key={e.id} value={e.id}>{e.nombres}</option>)}
+              </select>
             </div>
+            {tipoReporte !== 'asistencia' && (
+              <div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Filtrar Cliente</p>
+                <select value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold">
+                  <option value="">TODOS LOS CLIENTES</option>
+                  {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre_comercial}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 justify-end">
+            <button onClick={exportarExcel} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-lg">Excel</button>
+            <button onClick={exportarPDF} className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-lg">PDF</button>
           </div>
         </div>
 
@@ -145,12 +197,12 @@ export default function ReporteAdministrativo() {
                   <th className="p-6">Identificación</th>
                   <th className="p-6">{tipoReporte === 'asistencia' ? 'Ingreso' : 'Motivo / Fecha'}</th>
                   <th className="p-6">{tipoReporte === 'asistencia' ? 'Salida' : 'Monto'}</th>
-                  <th className="p-6">{tipoReporte === 'asistencia' ? 'Jornada' : 'Observaciones / Agenda'}</th>
+                  <th className="p-6">Observaciones / Agenda</th>
                   {tipoReporte !== 'asistencia' && <th className="p-6 text-center">Evidencia</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filas.map((r: any, idx) => (
+                {filasFiltradas.map((r: any, idx) => (
                   <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
                     <td className="p-6">
                       <p className="font-black text-white italic text-base leading-tight">
@@ -160,7 +212,6 @@ export default function ReporteAdministrativo() {
                         {tipoReporte === 'asistencia' ? r.fecha : `Vend: ${r.nombre_vendedor}`}
                       </p>
                     </td>
-
                     <td className="p-6">
                       {tipoReporte === 'asistencia' ? (
                         r.entrada ? (
@@ -179,7 +230,6 @@ export default function ReporteAdministrativo() {
                         </div>
                       )}
                     </td>
-
                     <td className="p-6">
                       {tipoReporte === 'asistencia' ? (
                         r.salida ? (
@@ -195,7 +245,6 @@ export default function ReporteAdministrativo() {
                         <p className="text-xl font-black text-white italic">${parseFloat(r.valor_transaccion || 0).toFixed(2)}</p>
                       )}
                     </td>
-
                     <td className="p-6">
                       {tipoReporte === 'asistencia' ? (
                         <div className="inline-block bg-slate-950 px-5 py-2 rounded-2xl border border-white/5">
@@ -203,7 +252,7 @@ export default function ReporteAdministrativo() {
                         </div>
                       ) : (
                         <div className="space-y-1">
-                          <p className="text-[10px] text-slate-400 italic leading-tight max-w-[200px]">
+                          <p className="text-[10px] text-slate-400 italic leading-tight max-w-[200px] break-words">
                             {r.observaciones ? `"${r.observaciones}"` : 'Sin observaciones'}
                           </p>
                           {r.proxima_visita && (
@@ -214,7 +263,6 @@ export default function ReporteAdministrativo() {
                         </div>
                       )}
                     </td>
-
                     {tipoReporte !== 'asistencia' && (
                       <td className="p-6 text-center">
                         <div className="flex flex-col items-center gap-2">
