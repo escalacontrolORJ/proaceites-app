@@ -2,11 +2,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import AdminNav from '@/components/AdminNav'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 
 export default function ReporteAdministrativo() {
-  const [tipoReporte, setTipoReporte] = useState('asistencia') // asistencia | visitas | proximas
+  const [tipoReporte, setTipoReporte] = useState('asistencia') 
   const [filas, setFilas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [fechaDesde, setFechaDesde] = useState(new Date().toISOString().split('T')[0])
@@ -19,7 +17,6 @@ export default function ReporteAdministrativo() {
   async function fetchData() {
     setLoading(true)
     try {
-      // 1. Mapa de nombres de empleados (común para todos los reportes)
       const { data: emps } = await supabase.from('empleados').select('id, nombres')
       const nombresMap = (emps || []).reduce((acc: any, cur: any) => ({ ...acc, [cur.id]: cur.nombres }), {})
 
@@ -49,9 +46,7 @@ export default function ReporteAdministrativo() {
           }
         })
         setFilas(Object.values(agrupados).reverse())
-
       } else {
-        // REPORTE DE VISITAS Y AGENDA (Usando campos de tu CSV: foto_local, valor_transaccion, etc.)
         const columnaFecha = tipoReporte === 'visitas' ? 'fecha' : 'proxima_visita'
         const { data: visitas, error } = await supabase
           .from('visitas')
@@ -61,32 +56,17 @@ export default function ReporteAdministrativo() {
           .order(columnaFecha, { ascending: false })
 
         if (error) throw error
-        
-        // Mapear nombres de vendedores y formatear para la tabla
-        const formateados = (visitas || []).map(v => ({
+        setFilas((visitas || []).map(v => ({
           ...v,
           nombre_vendedor: nombresMap[v.vendedor_id] || nombresMap[v.empleado_id] || 'Vendedor S/N',
-          nombre_cliente: v.clientes?.nombre_comercial || 'Cliente S/N'
-        }))
-        setFilas(formateados)
+          nombre_cliente: v.clientes?.nombre_comercial || 'S/N'
+        })))
       }
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }
 
-  const exportarExcel = () => {
-    let csvContent = "data:text/csv;charset=utf-8,";
-    if (tipoReporte === 'asistencia') {
-      csvContent += "Empleado,Fecha,Entrada,Salida,Horas\n";
-      filas.forEach(r => csvContent += `${r.nombre},${r.fecha},${r.entrada?.hora || ''},${r.salida?.hora || ''},${r.horas}\n`);
-    } else {
-      csvContent += "Vendedor,Cliente,Motivo,Valor,Fecha\n";
-      filas.forEach(r => csvContent += `${r.nombre_vendedor},${r.nombre_cliente},${r.motivo},${r.valor_transaccion},${r.fecha || r.proxima_visita}\n`);
-    }
-    window.open(encodeURI(csvContent));
-  }
-
   const abrirMapa = (gps: any) => {
-    if (!gps) return alert("Sin ubicación registrada")
+    if (!gps) return alert("Sin ubicación")
     const coords = gps.toString().replace(/[() ]/g, '')
     window.open(`https://www.google.com/maps?q=${coords}`, '_blank')
   }
@@ -97,13 +77,13 @@ export default function ReporteAdministrativo() {
       <main className="p-4 md:p-8 max-w-7xl mx-auto">
         <div className="flex flex-col gap-6 bg-slate-900/50 p-6 rounded-3xl border border-white/5 mb-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <h1 className="text-xl font-black italic uppercase tracking-tighter">Reportes Administrativos</h1>
+            <h1 className="text-xl font-black italic uppercase tracking-tighter">Reportes de Gestión</h1>
             <select 
               value={tipoReporte}
               onChange={(e) => setTipoReporte(e.target.value)}
-              className="bg-slate-800 text-emerald-400 border-none rounded-xl p-3 text-sm font-black outline-none w-full md:w-72"
+              className="bg-slate-800 text-emerald-400 border-none rounded-xl p-3 text-sm font-black outline-none w-full md:w-72 shadow-lg"
             >
-              <option value="asistencia">📋 CONTROL ASISTENCIA</option>
+              <option value="asistencia">📋 REPORTE ASISTENCIA</option>
               <option value="visitas">💼 GESTIÓN DE VISITAS</option>
               <option value="proximas">⏳ AGENDA PRÓXIMAS VISITAS</option>
             </select>
@@ -117,89 +97,104 @@ export default function ReporteAdministrativo() {
               <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Hasta</p>
               <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold" />
             </div>
-            <button onClick={exportarExcel} className="bg-white text-black px-6 py-2 rounded-xl text-[10px] font-black uppercase hover:bg-emerald-400 transition-colors">Exportar Excel</button>
           </div>
         </div>
 
         <div className="bg-slate-900 rounded-[35px] border border-white/5 overflow-hidden shadow-2xl">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-white/5 text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                <th className="p-6">{tipoReporte === 'asistencia' ? 'Colaborador' : 'Cliente / Vendedor'}</th>
-                <th className="p-6">{tipoReporte === 'asistencia' ? 'Entrada' : 'Detalle'}</th>
-                <th className="p-6">{tipoReporte === 'asistencia' ? 'Salida' : 'Resultado'}</th>
-                <th className="p-6 text-center">{tipoReporte === 'asistencia' ? 'Jornada' : 'Evidencia'}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {filas.map((r, i) => (
-                <tr key={i} className="hover:bg-white/[0.02] transition-colors">
-                  {/* COLUMNA 1 */}
-                  <td className="p-6">
-                    <p className="font-black text-white italic text-lg leading-tight">
-                      {tipoReporte === 'asistencia' ? r.nombre : r.nombre_cliente}
-                    </p>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase">
-                      {tipoReporte === 'asistencia' ? r.fecha : `Vend: ${r.nombre_vendedor}`}
-                    </p>
-                  </td>
-
-                  {/* COLUMNA 2: ENTRADA / MOTIVO */}
-                  <td className="p-6">
-                    {tipoReporte === 'asistencia' ? (
-                      r.entrada ? (
-                        <div className="flex items-center gap-4">
-                          <img src={r.entrada.foto} className="w-12 h-12 rounded-xl object-cover border border-white/10 shadow-lg" />
-                          <div>
-                            <p className="text-emerald-400 font-black text-xl">{r.entrada.hora}</p>
-                            <button onClick={() => abrirMapa(r.entrada.gps)} className="text-[9px] font-black text-slate-500 uppercase">📍 GPS</button>
-                          </div>
-                        </div>
-                      ) : '--:--'
-                    ) : (
-                      <div>
-                        <span className="bg-slate-800 px-3 py-1 rounded-full text-[10px] font-black text-slate-400 uppercase">{r.motivo}</span>
-                        <p className="text-[10px] text-slate-600 mt-2 font-bold uppercase">{r.fecha || r.proxima_visita}</p>
-                      </div>
-                    )}
-                  </td>
-
-                  {/* COLUMNA 3: SALIDA / MONTO */}
-                  <td className="p-6">
-                    {tipoReporte === 'asistencia' ? (
-                      r.salida ? (
-                        <div className="flex items-center gap-4">
-                          <img src={r.salida.foto} className="w-12 h-12 rounded-xl object-cover border border-white/10 shadow-lg" />
-                          <div>
-                            <p className="text-rose-400 font-black text-xl">{r.salida.hora}</p>
-                            <button onClick={() => abrirMapa(r.salida.gps)} className="text-[9px] font-black text-slate-500 uppercase">📍 GPS</button>
-                          </div>
-                        </div>
-                      ) : <div className="flex items-center gap-2"><span className="w-2 h-2 bg-amber-500 rounded-full animate-ping"></span><span className="text-amber-500 font-black text-[10px] uppercase tracking-tighter italic">Laborando...</span></div>
-                    ) : (
-                      <p className="text-2xl font-black text-white italic">${parseFloat(r.valor_transaccion || 0).toFixed(2)}</p>
-                    )}
-                  </td>
-
-                  {/* COLUMNA 4: JORNADA / EVIDENCIA */}
-                  <td className="p-6 text-center">
-                    {tipoReporte === 'asistencia' ? (
-                      <div className="inline-block bg-slate-950 px-6 py-3 rounded-3xl border border-white/5 shadow-inner">
-                        <p className="text-2xl font-black text-white leading-none">{r.horas}</p>
-                        <p className="text-[9px] font-bold text-slate-600 uppercase mt-1 tracking-widest">Horas</p>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-2">
-                        <img src={r.foto_local} className="w-12 h-12 rounded-xl object-cover border border-white/10 shadow-md" />
-                        <button onClick={() => abrirMapa(r.ubicacion_gps)} className="text-[9px] font-black text-blue-400 hover:text-white uppercase">📍 Ver Mapa</button>
-                      </div>
-                    )}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[900px]">
+              <thead>
+                <tr className="bg-white/5 text-[10px] font-black uppercase text-slate-500 tracking-widest">
+                  <th className="p-6 w-[25%]">Identificación</th>
+                  <th className="p-6 w-[20%]">{tipoReporte === 'asistencia' ? 'Ingreso' : 'Detalle'}</th>
+                  <th className="p-6 w-[20%]">{tipoReporte === 'asistencia' ? 'Salida' : 'Monto'}</th>
+                  <th className="p-6 w-[20%]">Observaciones / Agenda</th>
+                  <th className="p-6 text-center w-[15%]">Evidencia</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {filas.length === 0 && !loading && <div className="p-20 text-center text-slate-600 font-black uppercase italic tracking-widest">Sin registros encontrados</div>}
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {filas.map((r: any, idx) => (
+                  <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
+                    <td className="p-6">
+                      <p className="font-black text-white italic text-base leading-tight">
+                        {tipoReporte === 'asistencia' ? r.nombre : r.nombre_cliente}
+                      </p>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase">
+                        {tipoReporte === 'asistencia' ? r.fecha : `Vend: ${r.nombre_vendedor}`}
+                      </p>
+                    </td>
+
+                    <td className="p-6">
+                      {tipoReporte === 'asistencia' ? (
+                        r.entrada ? (
+                          <div className="flex items-center gap-3">
+                            <img src={r.entrada.foto} className="w-10 h-10 rounded-lg object-cover border border-white/10" />
+                            <div>
+                              <p className="text-emerald-400 font-black text-lg">{r.entrada.hora}</p>
+                              <button onClick={() => abrirMapa(r.entrada.gps)} className="text-[8px] font-black text-slate-500 underline">GPS</button>
+                            </div>
+                          </div>
+                        ) : '--:--'
+                      ) : (
+                        <div>
+                          <span className="bg-slate-800 px-2 py-1 rounded text-[9px] font-black text-slate-300 uppercase">{r.motivo}</span>
+                          <p className="text-[9px] text-slate-600 mt-1 font-bold">{r.fecha}</p>
+                        </div>
+                      )}
+                    </td>
+
+                    <td className="p-6">
+                      {tipoReporte === 'asistencia' ? (
+                        r.salida ? (
+                          <div className="flex items-center gap-3">
+                            <img src={r.salida.foto} className="w-10 h-10 rounded-lg object-cover border border-white/10" />
+                            <div>
+                              <p className="text-rose-400 font-black text-lg">{r.salida.hora}</p>
+                              <button onClick={() => abrirMapa(r.salida.gps)} className="text-[8px] font-black text-slate-500 underline">GPS</button>
+                            </div>
+                          </div>
+                        ) : <span className="text-amber-500 font-black text-[9px] animate-pulse italic uppercase">En Turno</span>
+                      ) : (
+                        <p className="text-xl font-black text-white italic">${parseFloat(r.valor_transaccion || 0).toFixed(2)}</p>
+                      )}
+                    </td>
+
+                    <td className="p-6">
+                      {tipoReporte === 'asistencia' ? (
+                        <div className="inline-block bg-slate-950 px-4 py-1 rounded-xl border border-white/5">
+                          <p className="text-lg font-black text-white leading-none">{r.horas}h</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-slate-400 italic leading-tight break-words max-w-[180px]">
+                            {r.observaciones ? `"${r.observaciones}"` : 'Sin notas'}
+                          </p>
+                          {r.proxima_visita && (
+                            <p className="text-[9px] font-black text-amber-500 uppercase border-t border-white/5 pt-1">
+                              📅 Prox: {r.proxima_visita}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </td>
+
+                    <td className="p-6 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <img 
+                          src={tipoReporte === 'asistencia' ? (r.entrada?.foto || r.salida?.foto) : r.foto_local} 
+                          className="w-12 h-12 rounded-xl object-cover border border-white/10 shadow-md cursor-pointer" 
+                          onClick={() => window.open(tipoReporte === 'asistencia' ? (r.entrada?.foto || r.salida?.foto) : r.foto_local, '_blank')}
+                        />
+                        {!tipoReporte.includes('asistencia') && (
+                          <button onClick={() => abrirMapa(r.ubicacion_gps)} className="text-[8px] font-black text-blue-400 uppercase">📍 Mapa</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </main>
     </div>
