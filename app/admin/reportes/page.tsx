@@ -16,14 +16,12 @@ export default function ReporteAdministrativo() {
   async function fetchData() {
     setLoading(true)
     try {
-      // 1. Obtener nombres de empleados (porque en asistencia llegan null)
       const { data: emps } = await supabase.from('empleados').select('id, nombres')
       const nombresMap = (emps || []).reduce((acc: any, cur: any) => ({ ...acc, [cur.id]: cur.nombres }), {})
 
-      // 2. Consultar la tabla asistencia
       const { data: asistencia, error } = await supabase
         .from('asistencia')
-        .select('*')
+        .select('id, empleado_id, fecha, fecha_hora, tipo_registro, foto, geolocalizacion')
         .gte('fecha', fechaDesde)
         .lte('fecha', fechaHasta)
         .order('fecha_hora', { ascending: true })
@@ -34,7 +32,6 @@ export default function ReporteAdministrativo() {
 
       asistencia?.forEach(reg => {
         const key = `${reg.empleado_id}_${reg.fecha}`
-
         if (!agrupados[key]) {
           agrupados[key] = {
             id: reg.id,
@@ -46,25 +43,23 @@ export default function ReporteAdministrativo() {
           }
         }
 
-        // --- CORRECCIÓN DE HORA PARA ECUADOR (-5h) ---
-        const dateUTC = new Date(reg.fecha_hora)
-        const dateEC = new Date(dateUTC.getTime() - (5 * 60 * 60 * 1000))
-        const horaFormateada = dateEC.getUTCHours().toString().padStart(2, '0') + ':' + 
-                               dateEC.getUTCMinutes().toString().padStart(2, '0')
+        // Ajuste de hora Ecuador (-5h)
+        const dUTC = new Date(reg.fecha_hora)
+        const dEC = new Date(dUTC.getTime() - (5 * 60 * 60 * 1000))
+        const horaStr = dEC.getUTCHours().toString().padStart(2, '0') + ':' + 
+                        dEC.getUTCMinutes().toString().padStart(2, '0')
 
-        // CAMPOS EXACTOS DEL DASHBOARD: 'foto' y 'geolocalizacion'
-        const fotoData = reg.foto 
-        const gpsData = reg.geolocalizacion
+        const dataEvento = { hora: horaStr, foto: reg.foto, gps: reg.geolocalizacion, raw: dUTC.getTime() }
 
-        if (reg.tipo_registro === 'ingreso') {
-          agrupados[key].entrada = { hora: horaFormateada, foto: fotoData, gps: gpsData, raw: dateUTC.getTime() }
-        } else if (reg.tipo_registro === 'salida') {
-          agrupados[key].salida = { hora: horaFormateada, foto: fotoData, gps: gpsData, raw: dateUTC.getTime() }
+        if (reg.tipo_registro.toUpperCase() === 'INGRESO') {
+          agrupados[key].entrada = dataEvento
+        } else {
+          agrupados[key].salida = dataEvento
         }
 
         if (agrupados[key].entrada && agrupados[key].salida) {
-          const diffMs = agrupados[key].salida.raw - agrupados[key].entrada.raw
-          agrupados[key].horas = (diffMs / 3600000).toFixed(2)
+          const diff = agrupados[key].salida.raw - agrupados[key].entrada.raw
+          agrupados[key].horas = (diff / 3600000).toFixed(2)
         }
       })
 
@@ -77,44 +72,50 @@ export default function ReporteAdministrativo() {
   }
 
   const abrirMapa = (gps: any) => {
-    if (!gps) return alert("Sin GPS")
+    if (!gps) return alert("Sin coordenadas")
     const coords = gps.toString().replace(/[() ]/g, '')
     window.open(`https://www.google.com/maps?q=${coords}`, '_blank')
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans">
+    <div className="min-h-screen bg-slate-950 text-slate-200">
       <AdminNav />
       <main className="p-4 md:p-8 max-w-7xl mx-auto">
-        <h1 className="text-2xl font-black italic mb-6">REPORTE OPERATIVO PROACEITES</h1>
-        
-        <div className="bg-slate-900 rounded-[30px] border border-slate-800 overflow-hidden shadow-2xl">
+        <div className="flex justify-between items-center mb-8 bg-slate-900 p-6 rounded-[25px] border border-slate-800">
+          <h1 className="text-xl font-black italic">ASISTENCIA LIMPIA (PROACEITES)</h1>
+          <div className="flex gap-2">
+            <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="bg-slate-800 p-2 rounded-lg text-xs font-bold border-none" />
+            <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="bg-slate-800 p-2 rounded-lg text-xs font-bold border-none" />
+          </div>
+        </div>
+
+        <div className="bg-slate-900 rounded-[35px] border border-slate-800 overflow-hidden shadow-2xl">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-800/50 text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                <th className="p-6">Colaborador</th>
-                <th className="p-6 text-emerald-500">Ingreso</th>
-                <th className="p-6 text-rose-500">Salida</th>
+              <tr className="bg-slate-800/40 text-[10px] font-black uppercase text-slate-500">
+                <th className="p-6">Empleado</th>
+                <th className="p-6">Entrada</th>
+                <th className="p-6">Salida</th>
                 <th className="p-6 text-center">Horas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
               {filas.map((r: any) => (
-                <tr key={r.id} className="hover:bg-slate-800/30">
+                <tr key={r.id} className="hover:bg-white/5 transition-colors">
                   <td className="p-6">
                     <p className="font-black text-white">{r.nombre}</p>
-                    <p className="text-[10px] text-slate-500">{r.fecha}</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase">{r.fecha}</p>
                   </td>
                   <td className="p-6">
-                    {r.entrada ? (
+                    {r.entrada && (
                       <div className="flex items-center gap-3">
                         <img src={r.entrada.foto} className="w-12 h-12 rounded-xl object-cover border border-slate-700" />
                         <div>
                           <p className="text-emerald-400 font-black text-lg">{r.entrada.hora}</p>
-                          <button onClick={() => abrirMapa(r.entrada.gps)} className="text-[9px] text-slate-500 font-bold underline">MAPA</button>
+                          <button onClick={() => abrirMapa(r.entrada.gps)} className="text-[9px] font-bold text-slate-500 hover:text-white uppercase">📍 GPS</button>
                         </div>
                       </div>
-                    ) : <span className="text-slate-700 italic">--:--</span>}
+                    )}
                   </td>
                   <td className="p-6">
                     {r.salida ? (
@@ -122,13 +123,16 @@ export default function ReporteAdministrativo() {
                         <img src={r.salida.foto} className="w-12 h-12 rounded-xl object-cover border border-slate-700" />
                         <div>
                           <p className="text-rose-400 font-black text-lg">{r.salida.hora}</p>
-                          <button onClick={() => abrirMapa(r.salida.gps)} className="text-[9px] text-slate-500 font-bold underline">MAPA</button>
+                          <button onClick={() => abrirMapa(r.salida.gps)} className="text-[9px] font-bold text-slate-500 hover:text-white uppercase">📍 GPS</button>
                         </div>
                       </div>
-                    ) : <span className="text-amber-500 font-black text-xs animate-pulse">LABORANDO...</span>}
+                    ) : <span className="text-amber-500 font-black text-[10px] animate-pulse">EN TURNO...</span>}
                   </td>
                   <td className="p-6 text-center">
-                    <span className="text-2xl font-black text-white">{r.horas}</span>
+                    <div className="inline-block bg-slate-950 px-4 py-2 rounded-2xl border border-slate-800">
+                      <p className="text-2xl font-black text-white tracking-tighter">{r.horas}</p>
+                      <p className="text-[8px] font-bold text-slate-600 uppercase">Horas</p>
+                    </div>
                   </td>
                 </tr>
               ))}
