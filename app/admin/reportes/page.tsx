@@ -2,8 +2,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import AdminNav from '@/components/AdminNav'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
 
 export default function ReporteAdministrativo() {
+  const [tipoReporte, setTipoReporte] = useState('asistencia') 
   const [filas, setFilas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [fechaDesde, setFechaDesde] = useState(new Date().toISOString().split('T')[0])
@@ -11,69 +14,83 @@ export default function ReporteAdministrativo() {
 
   useEffect(() => {
     fetchData()
-  }, [fechaDesde, fechaHasta])
+  }, [fechaDesde, fechaHasta, tipoReporte])
 
   async function fetchData() {
     setLoading(true)
     try {
-      const { data: emps } = await supabase.from('empleados').select('id, nombres')
-      const nombresMap = (emps || []).reduce((acc: any, cur: any) => ({ ...acc, [cur.id]: cur.nombres }), {})
+      if (tipoReporte === 'asistencia') {
+        const { data: emps } = await supabase.from('empleados').select('id, nombres')
+        const nombresMap = (emps || []).reduce((acc: any, cur: any) => ({ ...acc, [cur.id]: cur.nombres }), {})
 
-      const { data: asistencia, error } = await supabase
-        .from('asistencia')
-        .select('empleado_id, fecha, fecha_hora, tipo_registro, foto, geolocalizacion')
-        .gte('fecha', fechaDesde)
-        .lte('fecha', fechaHasta)
-        .order('fecha_hora', { ascending: true })
+        const { data: asistencia, error } = await supabase
+          .from('asistencia')
+          .select('empleado_id, fecha, fecha_hora, tipo_registro, foto, geolocalizacion')
+          .gte('fecha', fechaDesde)
+          .lte('fecha', fechaHasta)
+          .order('fecha_hora', { ascending: true })
 
-      if (error) throw error
-
-      const agrupados: any = {}
-
-      asistencia?.forEach(reg => {
-        const key = `${reg.empleado_id}_${reg.fecha}`
-        if (!agrupados[key]) {
-          agrupados[key] = {
-            id: key,
-            nombre: nombresMap[reg.empleado_id] || 'Usuario',
-            fecha: reg.fecha,
-            entrada: null,
-            salida: null,
-            horas: '0.00'
+        if (error) throw error
+        const agrupados: any = {}
+        asistencia?.forEach(reg => {
+          const key = `${reg.empleado_id}_${reg.fecha}`
+          if (!agrupados[key]) {
+            agrupados[key] = { id: key, nombre: nombresMap[reg.empleado_id] || 'Usuario', fecha: reg.fecha, entrada: null, salida: null, horas: '0.00' }
           }
+          const d = new Date(reg.fecha_hora); d.setHours(d.getHours() - 5)
+          const horaStr = d.getUTCHours().toString().padStart(2, '0') + ':' + d.getUTCMinutes().toString().padStart(2, '0')
+          const datosEvento = { hora: horaStr, foto: reg.foto, gps: reg.geolocalizacion, raw_time: d.getTime() }
+          const tipo = reg.tipo_registro?.toUpperCase()
+          if (tipo === 'INGRESO') agrupados[key].entrada = datosEvento
+          else if (tipo === 'SALIDA') agrupados[key].salida = datosEvento
+          if (agrupados[key].entrada && agrupados[key].salida) {
+            const diffMs = agrupados[key].salida.raw_time - agrupados[key].entrada.raw_time
+            agrupados[key].horas = (diffMs / 3600000).toFixed(2)
+          }
+        })
+        setFilas(Object.values(agrupados).reverse())
+      } else {
+        // Lógica para Visitas y Próximas Visitas basada en tu CSV
+        let query = supabase.from('visitas').select('*, empleados(nombres), clientes(nombre_comercial)')
+        if (tipoReporte === 'visitas') {
+          query = query.gte('fecha', fechaDesde).lte('fecha', fechaHasta)
+        } else {
+          query = query.gte('proxima_visita', fechaDesde).lte('proxima_visita', fechaHasta)
         }
+        const { data, error } = await query.order('created_at', { ascending: false })
+        if (error) throw error
+        setFilas(data || [])
+      }
+    } catch (err) { console.error(err) } finally { setLoading(false) }
+  }
 
-        const d = new Date(reg.fecha_hora)
-        d.setHours(d.getHours() - 5) // Ajuste Ecuador
-        const horaStr = d.getUTCHours().toString().padStart(2, '0') + ':' + 
-                        d.getUTCMinutes().toString().padStart(2, '0')
+  const exportarExcel = () => {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += tipoReporte === 'asistencia' ? "Empleado,Fecha,Entrada,Salida,Horas\n" : "Vendedor,Cliente,Motivo,Monto,Fecha\n";
+    filas.forEach(r => {
+      let row = tipoReporte === 'asistencia' ? 
+        `${r.nombre},${r.fecha},${r.entrada?.hora || ''},${r.salida?.hora || ''},${r.horas}` :
+        `${r.empleados?.nombres},${r.clientes?.nombre_comercial},${r.motivo},${r.valor_transaccion},${r.fecha || r.proxima_visita}`;
+      csvContent += row + "\n";
+    });
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Reporte_${tipoReporte}.csv`);
+    document.body.appendChild(link);
+    link.click();
+  }
 
-        const datosEvento = {
-          hora: horaStr,
-          foto: reg.foto,
-          gps: reg.geolocalizacion,
-          raw_time: d.getTime()
-        }
-
-        const tipo = reg.tipo_registro?.toUpperCase()
-        if (tipo === 'INGRESO') {
-          agrupados[key].entrada = datosEvento
-        } else if (tipo === 'SALIDA') {
-          agrupados[key].salida = datosEvento
-        }
-
-        if (agrupados[key].entrada && agrupados[key].salida) {
-          const diffMs = agrupados[key].salida.raw_time - agrupados[key].entrada.raw_time
-          agrupados[key].horas = (diffMs / 3600000).toFixed(2)
-        }
-      })
-
-      setFilas(Object.values(agrupados).reverse())
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
+  const exportarPDF = () => {
+    const doc = new jsPDF();
+    doc.text(`Reporte de ${tipoReporte.toUpperCase()}`, 14, 15);
+    const tableColumn = tipoReporte === 'asistencia' ? ["Empleado", "Fecha", "Entrada", "Salida", "Horas"] : ["Vendedor", "Cliente", "Motivo", "Monto", "Fecha"];
+    const tableRows = filas.map(r => tipoReporte === 'asistencia' ? 
+      [r.nombre, r.fecha, r.entrada?.hora, r.salida?.hora, r.horas] : 
+      [r.empleados?.nombres, r.clientes?.nombre_comercial, r.motivo, r.valor_transaccion, r.fecha || r.proxima_visita]
+    );
+    (doc as any).autoTable({ head: [tableColumn], body: tableRows, startY: 20 });
+    doc.save(`Reporte_${tipoReporte}.pdf`);
   }
 
   const abrirMapa = (gps: any) => {
@@ -86,89 +103,74 @@ export default function ReporteAdministrativo() {
     <div className="min-h-screen bg-slate-950 text-white font-sans">
       <AdminNav />
       <main className="p-4 md:p-8 max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 bg-slate-900/50 p-6 rounded-3xl border border-white/5">
-          <h1 className="text-xl font-black italic uppercase tracking-tighter">Reporte Administrativo</h1>
-          <div className="flex gap-2">
-            <input 
-              type="date" 
-              value={fechaDesde} 
-              onChange={e => setFechaDesde(e.target.value)} 
-              className="bg-slate-800 border-none rounded-xl p-2 text-xs font-bold outline-none" 
-            />
-            <input 
-              type="date" 
-              value={fechaHasta} 
-              onChange={e => setFechaHasta(e.target.value)} 
-              className="bg-slate-800 border-none rounded-xl p-2 text-xs font-bold outline-none" 
-            />
+        <div className="flex flex-col gap-6 bg-slate-900/50 p-6 rounded-3xl border border-white/5 mb-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <h1 className="text-xl font-black italic uppercase tracking-tighter">Panel de Reportes</h1>
+            <select 
+              value={tipoReporte}
+              onChange={(e) => setTipoReporte(e.target.value)}
+              className="bg-slate-800 text-emerald-400 border-none rounded-xl p-3 text-sm font-black outline-none w-full md:w-64"
+            >
+              <option value="asistencia">📅 ASISTENCIA PERSONAL</option>
+              <option value="visitas">💼 GESTIÓN DE VISITAS</option>
+              <option value="proximas">⏳ PRÓXIMAS VISITAS</option>
+            </select>
+          </div>
+          <div className="flex flex-wrap gap-4 items-end">
+            <div className="flex-1 min-w-[150px]">
+              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Desde</p>
+              <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold" />
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Hasta</p>
+              <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold" />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={exportarExcel} className="bg-emerald-600 hover:bg-emerald-700 p-2 rounded-xl text-[10px] font-black uppercase transition-colors">Excel</button>
+              <button onClick={exportarPDF} className="bg-rose-600 hover:bg-rose-700 p-2 rounded-xl text-[10px] font-black uppercase transition-colors">PDF</button>
+            </div>
           </div>
         </div>
 
         <div className="bg-slate-900 rounded-[35px] border border-white/5 overflow-hidden shadow-2xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-white/5 text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                  <th className="p-6">Colaborador</th>
-                  <th className="p-6">Ingreso</th>
-                  <th className="p-6">Salida</th>
-                  <th className="p-6 text-center">Horas</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {filas.map((r: any) => (
-                  <tr key={r.id} className="hover:bg-white/[0.02] transition-colors">
-                    <td className="p-6">
-                      <p className="font-black text-white italic text-lg leading-tight">{r.nombre}</p>
-                      <p className="text-[10px] font-bold text-slate-500">{r.fecha}</p>
-                    </td>
-                    <td className="p-6">
-                      {r.entrada ? (
-                        <div className="flex items-center gap-4">
-                          <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-white/10 overflow-hidden flex items-center justify-center">
-                            {r.entrada.foto ? <img src={r.entrada.foto} alt="E" className="w-full h-full object-cover" /> : <span className="text-[8px] text-slate-600 tracking-tighter text-center px-1">SIN FOTO</span>}
-                          </div>
-                          <div>
-                            <p className="text-emerald-400 font-black text-xl leading-none mb-1">{r.entrada.hora}</p>
-                            <button onClick={() => abrirMapa(r.entrada.gps)} className="text-[9px] font-black text-slate-500 hover:text-white uppercase">📍 GPS</button>
-                          </div>
-                        </div>
-                      ) : <span className="text-slate-700 italic">--:--</span>}
-                    </td>
-                    <td className="p-6">
-                      {r.salida ? (
-                        <div className="flex items-center gap-4">
-                          <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-white/10 overflow-hidden flex items-center justify-center">
-                            {r.salida.foto ? <img src={r.salida.foto} alt="S" className="w-full h-full object-cover" /> : <span className="text-[8px] text-slate-600 tracking-tighter text-center px-1">SIN FOTO</span>}
-                          </div>
-                          <div>
-                            <p className="text-rose-400 font-black text-xl leading-none mb-1">{r.salida.hora}</p>
-                            <button onClick={() => abrirMapa(r.salida.gps)} className="text-[9px] font-black text-slate-500 hover:text-white uppercase">📍 GPS</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 bg-amber-500 rounded-full animate-ping"></span>
-                          <span className="text-amber-500 font-black text-[10px] uppercase">Laborando...</span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="p-6 text-center">
-                      <div className="inline-block bg-slate-950 px-6 py-3 rounded-3xl border border-white/5 shadow-inner">
-                        <p className="text-2xl font-black text-white leading-none">{r.horas}</p>
-                        <p className="text-[9px] font-bold text-slate-600 uppercase mt-1 tracking-widest">Jornada</p>
+          <table className="w-full text-left border-collapse text-xs">
+            <thead className="bg-white/5 text-[10px] font-black uppercase text-slate-500 tracking-widest">
+              <tr>
+                <th className="p-6">{tipoReporte === 'asistencia' ? 'Colaborador' : 'Cliente / Vendedor'}</th>
+                <th className="p-6">{tipoReporte === 'asistencia' ? 'Ingreso' : 'Motivo'}</th>
+                <th className="p-6">{tipoReporte === 'asistencia' ? 'Salida' : 'Monto'}</th>
+                <th className="p-6 text-center">{tipoReporte === 'asistencia' ? 'Jornada' : 'Evidencia'}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {filas.map((r, i) => (
+                <tr key={i} className="hover:bg-white/[0.02] transition-colors">
+                  <td className="p-6">
+                    <p className="font-black text-white italic text-base leading-tight">
+                      {tipoReporte === 'asistencia' ? r.nombre : (r.clientes?.nombre_comercial || 'S/N')}
+                    </p>
+                    <p className="text-[10px] font-bold text-slate-500">{tipoReporte === 'asistencia' ? r.fecha : r.empleados?.nombres}</p>
+                  </td>
+                  <td className="p-6 font-bold uppercase text-slate-400">
+                    {tipoReporte === 'asistencia' ? (r.entrada?.hora || '--:--') : r.motivo}
+                  </td>
+                  <td className="p-6 font-black text-white">
+                    {tipoReporte === 'asistencia' ? (r.salida?.hora || 'LABORANDO') : `$${r.valor_transaccion?.toFixed(2) || '0.00'}`}
+                  </td>
+                  <td className="p-6 text-center">
+                    {tipoReporte === 'asistencia' ? (
+                      <span className="bg-slate-950 px-4 py-2 rounded-2xl border border-white/5 font-black">{r.horas}h</span>
+                    ) : (
+                      <div className="flex justify-center gap-2">
+                         {r.foto_local && <img src={r.foto_local} className="w-8 h-8 rounded-lg object-cover border border-white/10" />}
+                         <button onClick={() => abrirMapa(r.ubicacion_gps)} className="text-[10px] font-black text-blue-400">MAPA</button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {filas.length === 0 && !loading && (
-            <div className="p-24 text-center">
-              <p className="text-slate-600 font-bold italic text-lg uppercase tracking-tighter">No hay registros</p>
-            </div>
-          )}
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </main>
     </div>
