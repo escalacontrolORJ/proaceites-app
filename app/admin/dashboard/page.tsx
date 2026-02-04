@@ -1,132 +1,167 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 
-export default function AdminDashboard() {
+export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({ clientes: 0, visitas: 0, asistencia: 0 })
+  const [gpsReady, setGpsReady] = useState(false)
+  const [cameraReady, setCameraReady] = useState(false)
+  const [coords, setCoords] = useState('')
+  const [yaEntro, setYaEntro] = useState(false)
+  const [status, setStatus] = useState('Iniciando...')
+  
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const router = useRouter()
 
   useEffect(() => {
-    const checkAdmin = async () => {
+    const protegerRuta = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         router.replace('/login')
         return
       }
-      fetchStats()
+      const estadoLocal = localStorage.getItem('asistencia_estado')
+      if (estadoLocal === 'INGRESO_REALIZADO') setYaEntro(true)
+      setLoading(false)
+      iniciarSensores()
     }
-    checkAdmin()
+    protegerRuta()
   }, [router])
 
-  const fetchStats = async () => {
-    const { count: cCount } = await supabase.from('clientes').select('*', { count: 'exact', head: true })
-    const { count: vCount } = await supabase.from('visitas').select('*', { count: 'exact', head: true })
-    const { count: aCount } = await supabase.from('asistencia').select('*', { count: 'exact', head: true })
-    
-    setStats({
-      clientes: cCount || 0,
-      visitas: vCount || 0,
-      asistencia: aCount || 0
-    })
-    setLoading(false)
-  }
-
   const handleSignOut = async () => {
+    if (!confirm("¿Cerrar sesión?")) return
     await supabase.auth.signOut()
+    localStorage.removeItem('asistencia_estado')
     router.replace('/login')
   }
 
-  if (loading) return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center font-black uppercase text-xs tracking-widest animate-pulse">
-      Cargando Panel...
-    </div>
-  )
+  const iniciarSensores = async () => {
+    setGpsReady(false)
+    setStatus('Buscando GPS...')
+    
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setCoords(`(${pos.coords.latitude}, ${pos.coords.longitude})`)
+          setGpsReady(true)
+          setStatus('GPS Listo')
+          iniciarCamara()
+        },
+        (err) => {
+          setStatus('ERROR: Activa el GPS y recarga')
+          console.error(err)
+        },
+        { enableHighAccuracy: true }
+      )
+    }
+  }
+
+  const iniciarCamara = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user' } 
+      })
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        setCameraReady(true)
+      }
+    } catch (err) {
+      setStatus('ERROR: Activa la cámara')
+    }
+  }
+
+  const capturarYEnviar = async (tipoOriginal: 'INGRESO' | 'SALIDA') => {
+    setLoading(true)
+    setStatus(`Guardando ${tipoOriginal}...`)
+
+    try {
+      const video = videoRef.current
+      const canvas = canvasRef.current
+      if (!video || !canvas) return
+
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      canvas.getContext('2d')?.drawImage(video, 0, 0)
+      const fotoBase64 = canvas.toDataURL('image/jpeg', 0.5)
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error("Sesión expirada")
+
+      // CORRECCIÓN CLAVE: Convertir a minúsculas para cumplir con la Check Constraint de la DB
+      const tipoParaDB = tipoOriginal.toLowerCase()
+
+      const datos = {
+        empleado_id: session.user.id,
+        tipo_registro: tipoParaDB, 
+        fecha: new Date().toISOString().split('T')[0],
+        geolocalizacion: coords,
+        foto: fotoBase64,
+        fecha_hora: new Date().toISOString()
+      }
+
+      const { error: dbError } = await supabase.from('asistencia').insert([datos])
+
+      if (dbError) {
+        console.error("Error Supabase:", dbError)
+        alert(`ERROR AL GUARDAR: ${dbError.message}`)
+        throw dbError
+      }
+
+      if (tipoOriginal === 'INGRESO') {
+        localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
+        setYaEntro(true)
+      } else {
+        localStorage.removeItem('asistencia_estado')
+        setYaEntro(false)
+      }
+
+      setStatus(`¡${tipoOriginal} EXITOSO!`)
+      alert(`${tipoOriginal} registrado correctamente.`)
+
+    } catch (err: any) {
+      console.error(err)
+      setStatus('Error al registrar')
+      alert("Error: " + (err.message || "Fallo de conexión"))
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-12">
-      <nav className="bg-white p-6 flex justify-between items-center shadow-sm">
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white font-sans">
+      <div className="w-full max-w-sm flex justify-between items-center mb-8">
         <div>
-          <p className="text-[10px] font-black uppercase text-blue-600 tracking-widest">Administrador</p>
-          <h1 className="text-2xl font-black italic uppercase tracking-tighter">Panel Central</h1>
+          <h1 className="text-2xl font-black italic tracking-tighter uppercase">Proaceites</h1>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Control Operativo</p>
         </div>
-        <button onClick={handleSignOut} className="p-3 bg-slate-100 rounded-2xl">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
+        <button onClick={handleSignOut} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 text-slate-400 hover:text-white transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         </button>
-      </nav>
+      </div>
 
-      <main className="p-6 space-y-8 max-w-lg mx-auto">
+      <div className="relative w-full max-w-sm aspect-[3/4] bg-black rounded-[40px] overflow-hidden border-2 border-slate-800 shadow-2xl mb-8">
+        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+        <canvas ref={canvasRef} className="hidden" />
         
-        <section className="grid grid-cols-3 gap-3">
-          <div className="bg-white p-4 rounded-[30px] shadow-sm text-center">
-            <p className="text-[20px] font-black">{stats.clientes}</p>
-            <p className="text-[8px] font-bold uppercase text-slate-400">Clientes</p>
+        {!gpsReady && (
+          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center p-8 text-center">
+            <p className="text-xs font-bold text-amber-400 uppercase mb-4">{status}</p>
           </div>
-          <div className="bg-white p-4 rounded-[30px] shadow-sm text-center">
-            <p className="text-[20px] font-black text-blue-600">{stats.visitas}</p>
-            <p className="text-[8px] font-bold uppercase text-slate-400">Visitas</p>
-          </div>
-          <div className="bg-white p-4 rounded-[30px] shadow-sm text-center">
-            <p className="text-[20px] font-black text-emerald-500">{stats.asistencia}</p>
-            <p className="text-[8px] font-bold uppercase text-slate-400">Asistencia</p>
-          </div>
-        </section>
+        )}
+      </div>
 
-        <section className="space-y-4">
-          <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">Operaciones de Campo</h2>
-          <div className="grid grid-cols-2 gap-4">
-            
-            {/* RUTA CORREGIDA: /admin/empleados */}
-            <Link href="/admin/empleados" className="bg-emerald-500 text-white p-8 rounded-[40px] shadow-lg flex flex-col items-center gap-3 hover:bg-slate-900 transition-all">
-              <span className="text-3xl">🔑</span>
-              <span className="font-black uppercase text-[10px] tracking-tighter">Marcar Entrada</span>
-            </Link>
-
-            <Link href="/admin/visitas" className="bg-white p-8 rounded-[40px] shadow-sm flex flex-col items-center gap-3 hover:bg-slate-900 hover:text-white transition-all">
-              <span className="text-3xl">📍</span>
-              <span className="font-black uppercase text-[10px] tracking-tighter text-center">Visitas Clientes</span>
-            </Link>
-
-            <Link href="/admin/clientes" className="bg-white p-8 rounded-[40px] shadow-sm flex flex-col items-center gap-3 hover:bg-slate-900 hover:text-white transition-all">
-              <span className="text-3xl">👥</span>
-              <span className="font-black uppercase text-[10px] tracking-tighter">Clientes</span>
-            </Link>
-
-            <Link href="/admin/seguimiento" className="bg-blue-600 text-white p-8 rounded-[40px] shadow-lg flex flex-col items-center gap-3 hover:bg-slate-900 transition-all">
-              <span className="text-3xl">🗺️</span>
-              <span className="font-black uppercase text-[10px] tracking-tighter">Seguimiento</span>
-            </Link>
-
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">Administración</h2>
-          <div className="bg-white rounded-[40px] p-2 space-y-1">
-            
-            <Link href="/admin/reportes" className="w-full p-5 flex justify-between items-center hover:bg-slate-50 rounded-[35px] transition-all">
-              <div className="flex items-center gap-4">
-                <span className="bg-slate-100 p-2 rounded-xl text-lg">📊</span>
-                <span className="font-black uppercase text-[10px]">Reportes Generales</span>
-              </div>
-              <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </Link>
-
-            <button className="w-full p-5 flex justify-between items-center hover:bg-slate-50 rounded-[35px] transition-all">
-              <div className="flex items-center gap-4">
-                <span className="bg-slate-100 p-2 rounded-xl text-lg">⚙️</span>
-                <span className="font-black uppercase text-[10px]">Configuración</span>
-              </div>
-              <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
-          </div>
-        </section>
-
-      </main>
+      <div className="w-full max-w-sm space-y-4">
+        <button 
+          onClick={() => capturarYEnviar(yaEntro ? 'SALIDA' : 'INGRESO')} 
+          disabled={!gpsReady || loading} 
+          className={`w-full p-8 rounded-[30px] font-black text-xl transition-all shadow-xl active:scale-95 disabled:opacity-30 ${yaEntro ? 'bg-rose-500 shadow-rose-900/40' : 'bg-emerald-500 shadow-emerald-900/40'}`}
+        >
+          {loading ? '...' : (yaEntro ? 'REGISTRAR SALIDA' : 'REGISTRAR INGRESO')}
+        </button>
+        <p className="text-center text-[10px] font-bold text-slate-600 uppercase tracking-widest">{status}</p>
+      </div>
     </div>
   )
 }
