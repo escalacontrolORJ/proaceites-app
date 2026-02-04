@@ -100,7 +100,7 @@ export default function AdminDashboard() {
               <span className="font-black uppercase text-[10px] tracking-tighter">Clientes</span>
             </Link>
 
-            {/* 4. Mapa de Seguimiento */}
+            {/* 4. Mapa de Seguimiento (Añadido) */}
             <Link href="/admin/seguimiento" className="bg-blue-600 text-white p-8 rounded-[40px] shadow-lg flex flex-col items-center gap-3 hover:bg-slate-900 transition-all">
               <span className="text-3xl">🗺️</span>
               <span className="font-black uppercase text-[10px] tracking-tighter">Seguimiento</span>
@@ -114,7 +114,6 @@ export default function AdminDashboard() {
           <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">Administración</h2>
           <div className="bg-white rounded-[40px] p-2 space-y-1">
             
-            {/* Enlace corregido a /admin/reportes */}
             <Link href="/admin/reportes" className="w-full p-5 flex justify-between items-center hover:bg-slate-50 rounded-[35px] transition-all">
               <div className="flex items-center gap-4">
                 <span className="bg-slate-100 p-2 rounded-xl text-lg">📊</span>
