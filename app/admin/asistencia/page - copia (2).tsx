@@ -66,6 +66,7 @@ export default function RegistrarVisita() {
       canvas.height = video.videoHeight
       canvas.getContext('2d')?.drawImage(video, 0, 0)
       setFotoTomada(true)
+      // Detenemos el stream de la cámara para ahorrar batería
       if (video.srcObject) {
         (video.srcObject as MediaStream).getTracks().forEach(track => track.stop())
       }
@@ -76,69 +77,55 @@ export default function RegistrarVisita() {
     if (!form.cliente_id) return alert("Seleccione un cliente")
     setLoading(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error("No hay sesión de usuario activa")
-
       const canvas = canvasRef.current
       if (!canvas) return
 
-      const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.8))
+      const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.7))
       if (!blob) return
 
       const fileName = `visita_${Date.now()}.jpg`
-      const { error: uploadError } = await supabase.storage
-        .from('fotos_asistencia')
-        .upload(fileName, blob)
+      await supabase.storage.from('fotos_asistencia').upload(fileName, blob)
+      const { data: { publicUrl } } = supabase.storage.from('fotos_asistencia').getPublicUrl(fileName)
 
-      if (uploadError) throw uploadError
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('fotos_asistencia')
-        .getPublicUrl(fileName)
-
-      // Insertar datos asegurando los nombres de columna correctos
       const { error: insertError } = await supabase.from('visitas').insert([{
         cliente_id: form.cliente_id,
-        vendedor_id: user.id,
-        empleado_id: user.id, // Agregado por si tu tabla usa este nombre
+        vendedor_id: (await supabase.auth.getUser()).data.user?.id,
         motivo: form.motivo,
         foto_local: publicUrl,
         ubicacion_gps: coords,
         valor_transaccion: form.valor,
-        proxima_visita: form.proxima_visita || null,
+        proxima_visita: form.proxima_visita,
         observaciones: form.observaciones,
         fecha: new Date().toISOString().split('T')[0],
-        hora: new Date().toLocaleTimeString('it-IT') // Formato HH:mm:ss
+        hora: new Date().toLocaleTimeString()
       }])
 
       if (insertError) throw insertError
-
-      alert("✅ Visita registrada con éxito")
+      alert("✅ Visita guardada")
       router.push('/vendedor/dashboard')
-    } catch (err: any) {
-      console.error(err)
-      alert("Error: " + (err.message || "No se pudo guardar"))
-    } finally {
-      setLoading(false)
-    }
+    } catch (err) {
+      alert("Error al guardar")
+    } finally { setLoading(false) }
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 pb-24 text-slate-900 font-sans">
+    <div className="min-h-screen bg-slate-50 p-4 pb-24 font-sans text-slate-900">
       <div className="max-w-lg mx-auto space-y-6">
         <header className="flex justify-between items-center">
           <h1 className="text-2xl font-black italic uppercase tracking-tighter">Registro de Visita</h1>
           <button onClick={() => router.back()} className="text-[10px] font-black uppercase text-slate-400">Volver</button>
         </header>
 
-        <div className={`p-4 rounded-3xl text-center font-black uppercase text-[10px] tracking-widest shadow-sm ${gpsReady ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600 animate-pulse'}`}>
+        {/* Status */}
+        <div className={`p-4 rounded-3xl text-center font-black uppercase text-[10px] tracking-widest shadow-sm ${gpsReady ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
           {status}
         </div>
 
+        {/* Formulario */}
         <div className="bg-white p-5 rounded-[35px] shadow-sm space-y-4">
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Cliente</label>
-            <select className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" value={form.cliente_id} onChange={e => setForm({...form, cliente_id: e.target.value})}>
+            <select className="w-full bg-slate-50 p-4 rounded-2xl font-bold text-slate-800 outline-none" value={form.cliente_id} onChange={e => setForm({...form, cliente_id: e.target.value})}>
               <option value="">-- SELECCIONE UN LOCAL --</option>
               {clientes.map(c => <option key={c.id} value={c.id}>{(c.nombre_local || c.nombre_fiscal || 'S/N').toUpperCase()}</option>)}
             </select>
@@ -155,20 +142,22 @@ export default function RegistrarVisita() {
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Valor $</label>
-              <input type="number" step="0.01" className="w-full bg-slate-50 p-4 rounded-2xl font-bold" onChange={e => setForm({...form, valor: Number(e.target.value)})} />
+              <input type="number" placeholder="0.00" className="w-full bg-slate-50 p-4 rounded-2xl font-bold" onChange={e => setForm({...form, valor: Number(e.target.value)})} />
             </div>
           </div>
 
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Observaciones</label>
-            <textarea className="w-full p-4 bg-slate-50 rounded-2xl min-h-[80px] font-bold outline-none" onChange={e => setForm({...form, observaciones: e.target.value})} />
+            <textarea placeholder="Detalles..." className="w-full p-4 bg-slate-50 rounded-2xl min-h-[80px] font-bold outline-none" onChange={e => setForm({...form, observaciones: e.target.value})} />
           </div>
         </div>
 
+        {/* Área de Cámara */}
         <div className="relative aspect-square bg-black rounded-[40px] overflow-hidden shadow-2xl border-4 border-white">
           <video ref={videoRef} autoPlay playsInline className={`w-full h-full object-cover ${fotoTomada ? 'hidden' : 'block'}`} />
           <canvas ref={canvasRef} className={`w-full h-full object-cover ${fotoTomada ? 'block' : 'hidden'}`} />
           
+          {/* Botón Obturador: Solo se ve si la cámara está activa y NO se ha tomado la foto */}
           {gpsReady && !fotoTomada && videoRef.current?.srcObject && (
              <div className="absolute bottom-6 left-0 right-0 flex justify-center">
                 <button onClick={capturarFoto} className="bg-white/20 backdrop-blur-md border-2 border-white p-6 rounded-full">
@@ -178,11 +167,11 @@ export default function RegistrarVisita() {
           )}
         </div>
 
-        {/* BOTONES: Solo aparece Grabar si ya hay foto */}
+        {/* BOTONES DE ACCIÓN LÓGICOS */}
         {!fotoTomada ? (
           <button 
             onClick={activarCamaraYGPS}
-            className="w-full bg-blue-600 text-white p-6 rounded-[30px] font-black text-lg shadow-xl shadow-blue-100"
+            className="w-full bg-blue-600 text-white p-6 rounded-[30px] font-black text-lg shadow-xl shadow-blue-200"
           >
             📸 ABRIR CÁMARA Y GPS
           </button>
@@ -193,7 +182,7 @@ export default function RegistrarVisita() {
               disabled={loading || !gpsReady || !form.cliente_id} 
               className="w-full bg-slate-900 text-white p-6 rounded-[30px] font-black text-lg shadow-xl"
             >
-              {loading ? 'PROCESANDO...' : '🚀 FINALIZAR Y GUARDAR'}
+              {loading ? 'GUARDANDO...' : '🚀 FINALIZAR Y GRABAR'}
             </button>
             <button 
               onClick={() => { setFotoTomada(false); activarCamaraYGPS(); }} 
