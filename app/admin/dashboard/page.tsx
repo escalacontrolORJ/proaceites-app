@@ -77,30 +77,28 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        {/* Menú de Gestión Reorganizado */}
+        {/* Menú de Gestión */}
         <section className="space-y-4">
           <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">Operaciones de Campo</h2>
           <div className="grid grid-cols-2 gap-4">
             
-            {/* 1. Registro de entrada/salida laboral */}
+            {/* CORRECCIÓN: Si quieres marcar entrada como trabajador, usas /dashboard. 
+                Si quieres ver el reporte de asistencia, usas /admin/asistencia */}
             <Link href="/dashboard" className="bg-emerald-500 text-white p-8 rounded-[40px] shadow-lg flex flex-col items-center gap-3 hover:bg-slate-900 transition-all">
               <span className="text-3xl">🔑</span>
               <span className="font-black uppercase text-[10px] tracking-tighter">Marcar Entrada</span>
             </Link>
 
-            {/* 2. Registro de visitas a clientes */}
             <Link href="/admin/visitas" className="bg-white p-8 rounded-[40px] shadow-sm flex flex-col items-center gap-3 hover:bg-slate-900 hover:text-white transition-all">
               <span className="text-3xl">📍</span>
               <span className="font-black uppercase text-[10px] tracking-tighter text-center">Visitas Clientes</span>
             </Link>
 
-            {/* 3. Base de datos de clientes */}
             <Link href="/admin/clientes" className="bg-white p-8 rounded-[40px] shadow-sm flex flex-col items-center gap-3 hover:bg-slate-900 hover:text-white transition-all">
               <span className="text-3xl">👥</span>
               <span className="font-black uppercase text-[10px] tracking-tighter">Clientes</span>
             </Link>
 
-            {/* 4. Mapa de Seguimiento (AÑADIDO AQUÍ) */}
             <Link href="/admin/seguimiento" className="bg-blue-600 text-white p-8 rounded-[40px] shadow-lg flex flex-col items-center gap-3 hover:bg-slate-900 transition-all">
               <span className="text-3xl">🗺️</span>
               <span className="font-black uppercase text-[10px] tracking-tighter">Seguimiento</span>
@@ -109,7 +107,6 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        {/* Sección de Reportes y Configuración */}
         <section className="space-y-4">
           <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">Administración</h2>
           <div className="bg-white rounded-[40px] p-2 space-y-1">
