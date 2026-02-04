@@ -13,6 +13,7 @@ export default function ReporteAdministrativo() {
   const [fechaDesde, setFechaDesde] = useState(new Date().toISOString().split('T')[0])
   const [fechaHasta, setFechaHasta] = useState(new Date().toISOString().split('T')[0])
   
+  // Estados para filtros
   const [empleados, setEmpleados] = useState<any[]>([])
   const [clientes, setClientes] = useState<any[]>([])
   const [filtroEmpleado, setFiltroEmpleado] = useState('')
@@ -29,9 +30,9 @@ export default function ReporteAdministrativo() {
   async function fetchData() {
     setLoading(true)
     try {
-      // Cargar Catálogos para filtros (Ajustado a campos reales de tu DB)
+      // Cargar Catálogos para filtros
       const { data: emps } = await supabase.from('empleados').select('id, nombres')
-      const { data: clis } = await supabase.from('clientes').select('id, nombre_local, nombre_fiscal')
+      const { data: clis } = await supabase.from('clientes').select('id, nombre_comercial')
       setEmpleados(emps || [])
       setClientes(clis || [])
       
@@ -72,10 +73,9 @@ export default function ReporteAdministrativo() {
         setFilas(Object.values(agrupados).reverse())
       } else {
         const columnaFecha = tipoReporte === 'visitas' ? 'fecha' : 'proxima_visita'
-        // Join corregido para usar nombre_local y nombre_fiscal según tu tabla
         const { data: visitas, error } = await supabase
           .from('visitas')
-          .select('*, clientes(nombre_local, nombre_fiscal)')
+          .select('*, clientes(nombre_comercial)')
           .gte(columnaFecha, fechaDesde)
           .lte(columnaFecha, fechaHasta)
           .order(columnaFecha, { ascending: false })
@@ -84,8 +84,7 @@ export default function ReporteAdministrativo() {
         setFilas((visitas || []).map(v => ({
           ...v,
           nombre_vendedor: nombresMap[v.vendedor_id] || nombresMap[v.empleado_id] || 'S/N',
-          // Priorizamos nombre_local que es el nombre comercial en tu formulario
-          nombre_cliente: v.clientes?.nombre_local || v.clientes?.nombre_fiscal || 'S/N'
+          nombre_cliente: v.clientes?.nombre_comercial || 'Cliente no encontrado'
         })))
       }
     } catch (err) { console.error(err) } finally { setLoading(false) }
@@ -115,35 +114,22 @@ export default function ReporteAdministrativo() {
   }
 
   const exportarPDF = () => {
-    try {
-      const doc = new jsPDF()
-      doc.setFontSize(16)
-      doc.text(`Reporte de ${tipoReporte.toUpperCase()}`, 14, 15)
-      doc.setFontSize(10)
-      doc.text(`Generado el: ${new Date().toLocaleDateString()} | Periodo: ${fechaDesde} a ${fechaHasta}`, 14, 22)
+    const doc = new jsPDF()
+    doc.text(`Reporte de ${tipoReporte.toUpperCase()}`, 14, 15)
+    doc.setFontSize(10)
+    doc.text(`Periodo: ${fechaDesde} al ${fechaHasta}`, 14, 22)
 
-      const headers = tipoReporte === 'asistencia' 
-        ? [["Empleado", "Fecha", "Entrada", "Salida", "Horas"]]
-        : [["Vendedor", "Cliente", "Motivo", "Monto", "Fecha", "Prox. Visita"]]
-      
-      const data = filasFiltradas.map(r => tipoReporte === 'asistencia'
-        ? [r.nombre, r.fecha, r.entrada?.hora || '', r.salida?.hora || '', r.horas]
-        : [r.nombre_vendedor, r.nombre_cliente, r.motivo, `$${r.valor_transaccion}`, r.fecha, r.proxima_visita]
-      )
+    const headers = tipoReporte === 'asistencia' 
+      ? [["Empleado", "Fecha", "Entrada", "Salida", "Horas"]]
+      : [["Vendedor", "Cliente", "Motivo", "Monto", "Fecha", "Prox. Visita"]]
+    
+    const data = filasFiltradas.map(r => tipoReporte === 'asistencia'
+      ? [r.nombre, r.fecha, r.entrada?.hora || '', r.salida?.hora || '', r.horas]
+      : [r.nombre_vendedor, r.nombre_cliente, r.motivo, r.valor_transaccion, r.fecha, r.proxima_visita]
+    )
 
-      autoTable(doc, { 
-        head: headers, 
-        body: data, 
-        startY: 30,
-        theme: 'grid',
-        headStyles: { fillColor: [30, 41, 59] }
-      })
-
-      doc.save(`Reporte_${tipoReporte}_${fechaDesde}.pdf`)
-    } catch (error) {
-      console.error("Error al generar PDF:", error)
-      alert("Hubo un error al generar el PDF. Revisa la consola.")
-    }
+    autoTable(doc, { head: headers, body: data, startY: 30 })
+    doc.save(`Reporte_${tipoReporte}.pdf`)
   }
 
   const abrirMapa = (gps: any) => {
@@ -173,25 +159,25 @@ export default function ReporteAdministrativo() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div>
               <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Desde</p>
-              <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold" />
+              <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold shadow-inner" />
             </div>
             <div>
               <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Hasta</p>
-              <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold" />
+              <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold shadow-inner" />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Empleado</p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Filtrar Empleado</p>
               <select value={filtroEmpleado} onChange={e => setFiltroEmpleado(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold">
-                <option value="">TODOS</option>
+                <option value="">TODOS LOS EMPLEADOS</option>
                 {empleados.map(e => <option key={e.id} value={e.id}>{e.nombres}</option>)}
               </select>
             </div>
             {tipoReporte !== 'asistencia' && (
               <div>
-                <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Cliente</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Filtrar Cliente</p>
                 <select value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold">
-                  <option value="">TODOS</option>
-                  {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre_local || c.nombre_fiscal}</option>)}
+                  <option value="">TODOS LOS CLIENTES</option>
+                  {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre_comercial}</option>)}
                 </select>
               </div>
             )}
