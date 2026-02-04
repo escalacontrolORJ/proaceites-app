@@ -38,48 +38,60 @@ export default function RegistrarVisita() {
   const activarCamaraYGPS = async () => {
     setStatus('Activando Cámara y GPS... ⏳')
     
-    // 1. Intentar GPS primero
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`)
-        setGpsReady(true)
-        setStatus('Sistemas Listos ✅')
-      },
-      (err) => setStatus('Error GPS: active la ubicación'),
-      { enableHighAccuracy: true }
-    )
+    // 1. Detener cualquier flujo previo para liberar la cámara
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream
+      stream.getTracks().forEach(track => track.stop())
+    }
 
-    // 2. Lógica de cámara con reintento automático
     try {
-      // Intentamos primero la trasera de forma ideal
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: { ideal: "environment" },
+      // 2. Solicitar estrictamente la cámara trasera (environment)
+      const constraints = {
+        video: {
+          facingMode: { exact: "environment" },
           width: { ideal: 1280 },
           height: { ideal: 720 }
-        } 
-      })
+        },
+        audio: false
+      }
+
+      // Intentar primero con "exact" (fuerza la trasera)
+      let stream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints)
+      } catch (e) {
+        // Fallback si "exact" falla (algunos navegadores antiguos)
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: "environment" } 
+        })
+      }
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream
+        // Estos atributos son vitales para que el video cargue en móviles
         videoRef.current.setAttribute("playsinline", "true")
-        videoRef.current.setAttribute("muted", "true") // Vital para móviles
+        videoRef.current.setAttribute("muted", "true")
         videoRef.current.play()
       }
-    } catch (err) {
-      console.error("Error inicial cámara:", err)
       
-      // REINTENTO: Si falla la trasera, pedimos cualquier cámara disponible
-      try {
-        const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true })
-        if (videoRef.current) {
-          videoRef.current.srcObject = fallbackStream
-          videoRef.current.play()
-        }
-      } catch (finalErr) {
-        setStatus('Error de Cámara: Verifique permisos')
-        alert("No se pudo acceder a la cámara. Por favor:\n1. Revise que el sitio sea HTTPS\n2. Dé permiso de cámara en el candado de la barra de direcciones.")
-      }
+      // 3. Activar GPS
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`)
+          setGpsReady(true)
+          setStatus('Sistemas Listos ✅')
+        },
+        (err) => {
+          console.error(err)
+          setStatus('Error GPS: Active ubicación')
+        },
+        { enableHighAccuracy: true }
+      )
+
+    } catch (err) {
+      console.error("Error de cámara:", err)
+      setStatus('Error de Cámara: Verifique permisos')
+      alert("No se pudo acceder a la cámara trasera. Asegúrese de dar permisos de cámara en el navegador.")
     }
   }
 
@@ -89,11 +101,14 @@ export default function RegistrarVisita() {
     if (video && canvas) {
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
-      canvas.getContext('2d')?.drawImage(video, 0, 0)
-      setFotoTomada(true)
-      
-      if (video.srcObject) {
-        (video.srcObject as MediaStream).getTracks().forEach(track => track.stop())
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.drawImage(video, 0, 0)
+        setFotoTomada(true)
+        // Apagar la cámara tras tomar la foto
+        if (video.srcObject) {
+          (video.srcObject as MediaStream).getTracks().forEach(track => track.stop())
+        }
       }
     }
   }
@@ -154,7 +169,7 @@ export default function RegistrarVisita() {
     <div className="min-h-screen bg-slate-50 p-4 pb-24 text-slate-900 font-sans">
       <div className="max-w-lg mx-auto space-y-6">
         <header className="flex justify-between items-center">
-          <h1 className="text-2xl font-black italic uppercase tracking-tighter text-slate-900">Registro de Visita</h1>
+          <h1 className="text-2xl font-black italic uppercase tracking-tighter">Registro de Visita</h1>
         </header>
 
         <div className={`p-4 rounded-3xl text-center font-black uppercase text-[10px] tracking-widest shadow-sm ${gpsReady ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600 animate-pulse'}`}>
@@ -164,7 +179,7 @@ export default function RegistrarVisita() {
         <div className="bg-white p-5 rounded-[35px] shadow-sm space-y-4">
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Cliente / Local</label>
-            <select className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900" value={form.cliente_id} onChange={e => setForm({...form, cliente_id: e.target.value})}>
+            <select className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" value={form.cliente_id} onChange={e => setForm({...form, cliente_id: e.target.value})}>
               <option value="">-- SELECCIONE UN LOCAL --</option>
               {clientes.map(c => <option key={c.id} value={c.id}>{(c.nombre_local || c.nombre_fiscal || 'S/N').toUpperCase()}</option>)}
             </select>
@@ -173,7 +188,7 @@ export default function RegistrarVisita() {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Motivo</label>
-              <select className="w-full bg-slate-50 p-4 rounded-2xl font-bold text-slate-900" value={form.motivo} onChange={e => setForm({...form, motivo: e.target.value})}>
+              <select className="w-full bg-slate-50 p-4 rounded-2xl font-bold" value={form.motivo} onChange={e => setForm({...form, motivo: e.target.value})}>
                 <option value="Visita">Solo Visita</option>
                 <option value="Venta">Venta Realizada</option>
                 <option value="Cobro">Gestión de Cobro</option>
@@ -183,18 +198,18 @@ export default function RegistrarVisita() {
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Valor $</label>
-              <input type="number" step="0.01" value={form.valor} className="w-full bg-slate-50 p-4 rounded-2xl font-bold text-slate-900" onChange={e => setForm({...form, valor: Number(e.target.value)})} />
+              <input type="number" step="0.01" value={form.valor} className="w-full bg-slate-50 p-4 rounded-2xl font-bold" onChange={e => setForm({...form, valor: Number(e.target.value)})} />
             </div>
           </div>
 
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Agendar Próxima Visita</label>
-            <input type="date" value={form.proxima_visita} className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none text-slate-900" onChange={e => setForm({...form, proxima_visita: e.target.value})} />
+            <input type="date" value={form.proxima_visita} className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" onChange={e => setForm({...form, proxima_visita: e.target.value})} />
           </div>
 
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Observaciones</label>
-            <textarea value={form.observaciones} className="w-full p-4 bg-slate-50 rounded-2xl min-h-[80px] font-bold outline-none text-slate-900" onChange={e => setForm({...form, observaciones: e.target.value})} />
+            <textarea value={form.observaciones} className="w-full p-4 bg-slate-50 rounded-2xl min-h-[80px] font-bold outline-none" onChange={e => setForm({...form, observaciones: e.target.value})} />
           </div>
         </div>
 
@@ -225,13 +240,13 @@ export default function RegistrarVisita() {
               disabled={loading || !gpsReady || !form.cliente_id} 
               className="w-full bg-slate-900 text-white p-6 rounded-[30px] font-black text-lg shadow-xl disabled:bg-slate-400 active:scale-95 transition-all"
             >
-              {loading ? 'GRABANDO EN NUBE...' : '🚀 FINALIZAR Y GUARDAR'}
+              {loading ? 'GRABANDO...' : '🚀 FINALIZAR Y GUARDAR'}
             </button>
             <button 
               onClick={() => { setFotoTomada(false); activarCamaraYGPS(); }} 
               className="w-full text-[10px] font-black uppercase text-slate-400 text-center tracking-widest"
             >
-              🔄 Volver a intentar foto
+              🔄 Volver a tomar foto
             </button>
           </div>
         )}
