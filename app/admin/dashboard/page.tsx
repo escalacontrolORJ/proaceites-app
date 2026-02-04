@@ -16,11 +16,6 @@ export default function AdminDashboard() {
         router.replace('/login')
         return
       }
-      // Opcional: Verificar si el correo es del administrador
-      // if (session.user.email !== 'tu-correo-admin@gmail.com') {
-      //   router.replace('/dashboard')
-      //   return
-      // }
       fetchStats()
     }
     checkAdmin()
@@ -46,13 +41,12 @@ export default function AdminDashboard() {
 
   if (loading) return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center font-black uppercase text-xs tracking-widest animate-pulse">
-      Cargando Panel de Control...
+      Cargando Panel...
     </div>
   )
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-12">
-      {/* Header Estilo App */}
       <nav className="bg-white p-6 flex justify-between items-center shadow-sm">
         <div>
           <p className="text-[10px] font-black uppercase text-blue-600 tracking-widest">Administrador</p>
@@ -79,32 +73,35 @@ export default function AdminDashboard() {
           </div>
           <div className="bg-white p-4 rounded-[30px] shadow-sm text-center">
             <p className="text-[20px] font-black text-emerald-500">{stats.asistencia}</p>
-            <p className="text-[8px] font-bold uppercase text-slate-400">Marcaciones</p>
+            <p className="text-[8px] font-bold uppercase text-slate-400">Asistencia</p>
           </div>
         </section>
 
-        {/* Menú de Gestión */}
+        {/* Menú de Gestión Reorganizado */}
         <section className="space-y-4">
-          <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">Gestión de Campo</h2>
+          <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">Operaciones de Campo</h2>
           <div className="grid grid-cols-2 gap-4">
             
-            <Link href="/admin/asistencia" className="bg-white p-8 rounded-[40px] shadow-sm flex flex-col items-center gap-3 hover:bg-slate-900 hover:text-white transition-all group">
-              <span className="text-3xl">🕒</span>
-              <span className="font-black uppercase text-[10px] tracking-tighter">Asistencia</span>
+            {/* 1. Registro de entrada/salida laboral */}
+            <Link href="/dashboard" className="bg-emerald-500 text-white p-8 rounded-[40px] shadow-lg flex flex-col items-center gap-3 hover:bg-slate-900 transition-all">
+              <span className="text-3xl">🔑</span>
+              <span className="font-black uppercase text-[10px] tracking-tighter">Marcar Entrada</span>
             </Link>
 
+            {/* 2. Registro de visitas a clientes */}
+            <Link href="/admin/visitas" className="bg-white p-8 rounded-[40px] shadow-sm flex flex-col items-center gap-3 hover:bg-slate-900 hover:text-white transition-all">
+              <span className="text-3xl">📍</span>
+              <span className="font-black uppercase text-[10px] tracking-tighter text-center">Visitas Clientes</span>
+            </Link>
+
+            {/* 3. Base de datos de clientes */}
             <Link href="/admin/clientes" className="bg-white p-8 rounded-[40px] shadow-sm flex flex-col items-center gap-3 hover:bg-slate-900 hover:text-white transition-all">
               <span className="text-3xl">👥</span>
               <span className="font-black uppercase text-[10px] tracking-tighter">Clientes</span>
             </Link>
 
-            <Link href="/admin/visitas" className="bg-white p-8 rounded-[40px] shadow-sm flex flex-col items-center gap-3 hover:bg-slate-900 hover:text-white transition-all">
-              <span className="text-3xl">📝</span>
-              <span className="font-black uppercase text-[10px] tracking-tighter">Reportes</span>
-            </Link>
-
-            {/* NUEVA OPCIÓN DE SEGUIMIENTO */}
-            <Link href="/admin/seguimiento" className="bg-blue-600 p-8 rounded-[40px] shadow-lg flex flex-col items-center gap-3 hover:bg-slate-900 text-white transition-all">
+            {/* 4. Mapa de Seguimiento */}
+            <Link href="/admin/seguimiento" className="bg-blue-600 text-white p-8 rounded-[40px] shadow-lg flex flex-col items-center gap-3 hover:bg-slate-900 transition-all">
               <span className="text-3xl">🗺️</span>
               <span className="font-black uppercase text-[10px] tracking-tighter">Seguimiento</span>
             </Link>
@@ -112,10 +109,20 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        {/* Sección de Configuración */}
+        {/* Sección de Reportes y Configuración */}
         <section className="space-y-4">
-          <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">Sistema</h2>
+          <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">Administración</h2>
           <div className="bg-white rounded-[40px] p-2 space-y-1">
+            
+            {/* Enlace corregido a /admin/reportes */}
+            <Link href="/admin/reportes" className="w-full p-5 flex justify-between items-center hover:bg-slate-50 rounded-[35px] transition-all">
+              <div className="flex items-center gap-4">
+                <span className="bg-slate-100 p-2 rounded-xl text-lg">📊</span>
+                <span className="font-black uppercase text-[10px]">Reportes Generales</span>
+              </div>
+              <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </Link>
+
             <button className="w-full p-5 flex justify-between items-center hover:bg-slate-50 rounded-[35px] transition-all">
               <div className="flex items-center gap-4">
                 <span className="bg-slate-100 p-2 rounded-xl text-lg">⚙️</span>
