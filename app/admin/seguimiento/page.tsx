@@ -3,26 +3,19 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import dynamic from 'next/dynamic'
 
-// ESTO ES LO MÁS IMPORTANTE: Carga el mapa solo en el cliente
 const MapaSinSSR = dynamic(() => import('./MapaComponente'), { 
   ssr: false,
-  loading: () => <div className="h-full w-full flex items-center justify-center bg-slate-50 rounded-[25px] font-black uppercase text-[10px] tracking-widest animate-pulse">Cargando Mapa...</div>
+  loading: () => <div className="h-[500px] w-full flex items-center justify-center bg-slate-100 rounded-[35px] font-black uppercase text-[10px] animate-pulse">Cargando Mapa...</div>
 })
 
 interface Vendedor { id: string; nombre: string; }
-interface Cliente { id: string; nombre: string; ubicacion_gps: string; }
-interface Visita {
-  id: string;
-  geolocalizacion: string;
-  fecha_hora: string;
-  clientes: { nombre: string } | null;
-  usuarios: { nombre: string } | null;
-}
+interface Cliente { id: string; nombre_local: string; ubicacion_gps: string; }
 
 export default function SeguimientoPage() {
   const [vendedores, setVendedores] = useState<Vendedor[]>([])
   const [puntosClientes, setPuntosClientes] = useState<Cliente[]>([])
-  const [visitas, setVisitas] = useState<Visita[]>([])
+  const [puntosMapa, setPuntosMapa] = useState<any[]>([])
+  
   const [vendedorId, setVendedorId] = useState('all')
   const [fechaInicio, setFechaInicio] = useState(new Date().toISOString().split('T')[0])
   const [fechaFin, setFechaFin] = useState(new Date().toISOString().split('T')[0])
@@ -35,62 +28,90 @@ export default function SeguimientoPage() {
 
   const fetchFiltros = async () => {
     const { data: v } = await supabase.from('usuarios').select('id, nombre')
-    const { data: c } = await supabase.from('clientes').select('id, nombre, ubicacion_gps')
-    if (v) setVendedores(v as Vendedor[])
-    if (c) setPuntosClientes(c as Cliente[])
+    const { data: c } = await supabase.from('clientes').select('id, nombre_local, ubicacion_gps')
+    if (v) setVendedores(v)
+    if (c) setPuntosClientes(c)
   }
 
   const cargarDatos = async () => {
-    let query = supabase.from('asistencia').select(`
-      id, geolocalizacion, fecha_hora,
-      clientes (nombre),
-      usuarios (nombre)
+    // CONSULTA A LA TABLA VISITAS (Basado en tu CSV)
+    let query = supabase.from('visitas').select(`
+      id, 
+      ubicacion_gps, 
+      fecha,
+      hora,
+      foto_local,
+      observaciones,
+      usuarios:vendedor_id (nombre),
+      clientes:cliente_id (nombre_local)
     `)
-    .gte('fecha_hora', `${fechaInicio}T00:00:00`)
-    .lte('fecha_hora', `${fechaFin}T23:59:59`)
+    .gte('fecha', fechaInicio)
+    .lte('fecha', fechaFin)
 
     if (vendedorId !== 'all') {
-      query = query.eq('empleado_id', vendedorId)
+      query = query.eq('vendedor_id', vendedorId)
     }
 
-    const { data } = await query
-    if (data) setVisitas(data as unknown as Visita[])
+    const { data, error } = await query
+    
+    if (error) {
+      console.error("Error en Visitas:", error)
+    } else {
+      // Formateamos los datos para que el MapaComponente los entienda
+      const formateados = (data || []).map(v => ({
+        id: v.id,
+        geolocalizacion: v.ubicacion_gps, // Mapeamos ubicacion_gps a lo que espera el mapa
+        fecha_hora: `${v.fecha} ${v.hora}`,
+        usuarios: v.usuarios,
+        clientes: { nombre: v.clientes?.nombre_local || 'Cliente Sin Nombre' },
+        foto: v.foto_local
+      }))
+      setPuntosMapa(formateados)
+    }
   }
 
   const parseCoords = (coordString: string): [number, number] | null => {
-    if (!coordString) return null
-    const parts = coordString.replace(/[()]/g, '').split(',')
-    if (parts.length < 2) return null
-    return [parseFloat(parts[0]), parseFloat(parts[1])]
+    if (!coordString) return null;
+    // Quitamos espacios y paréntesis por si acaso
+    const clean = coordString.replace(/[() ]/g, '');
+    const parts = clean.split(',');
+    if (parts.length < 2) return null;
+    const lat = parseFloat(parts[0]);
+    const lng = parseFloat(parts[1]);
+    if (isNaN(lat) || isNaN(lng)) return null;
+    return [lat, lng];
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* SECCIÓN DE FILTROS (Igual que antes) */}
-      <div className="bg-white p-5 rounded-[32px] shadow-sm border border-slate-100">
-        <h1 className="text-xl font-black uppercase italic mb-4">Seguimiento</h1>
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="col-span-2">
-            <select className="w-full p-3 bg-slate-50 rounded-2xl text-xs font-bold" value={vendedorId} onChange={(e) => setVendedorId(e.target.value)}>
-              <option value="all">TODOS LOS VENDEDORES</option>
-              {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}
-            </select>
+    <div className="flex flex-col gap-4 max-w-lg mx-auto pb-24">
+      <div className="bg-white p-6 rounded-[35px] shadow-sm border border-slate-100">
+        <h1 className="text-2xl font-black italic uppercase tracking-tighter mb-4 text-blue-900">Seguimiento de Visitas</h1>
+        
+        <div className="space-y-3 mb-5">
+          <select className="w-full p-4 bg-slate-50 rounded-2xl text-xs font-bold border-none" value={vendedorId} onChange={(e) => setVendedorId(e.target.value)}>
+            <option value="all">TODOS LOS VENDEDORES</option>
+            {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+          </select>
+
+          <div className="grid grid-cols-2 gap-3">
+            <input type="date" className="w-full p-4 bg-slate-50 rounded-2xl text-xs font-bold border-none" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
+            <input type="date" className="w-full p-4 bg-slate-50 rounded-2xl text-xs font-bold border-none" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
           </div>
-          <input type="date" className="p-3 bg-slate-50 rounded-2xl text-xs font-bold" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
-          <input type="date" className="p-3 bg-slate-50 rounded-2xl text-xs font-bold" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
         </div>
+
         <div className="flex gap-2">
-          <button onClick={cargarDatos} className="flex-[2] bg-blue-600 text-white p-4 rounded-2xl font-black text-[10px] uppercase">Actualizar</button>
-          <button onClick={() => setMostrarClientes(!mostrarClientes)} className={`flex-1 p-4 rounded-2xl font-black text-[10px] uppercase border-2 ${mostrarClientes ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white border-slate-100 text-slate-400'}`}>
+          <button onClick={cargarDatos} className="flex-[2] bg-blue-600 text-white p-5 rounded-[25px] font-black text-[10px] uppercase shadow-lg shadow-blue-200">
+            🔄 Actualizar Seguimiento
+          </button>
+          <button onClick={() => setMostrarClientes(!mostrarClientes)} className={`flex-1 p-5 rounded-[25px] font-black text-[10px] uppercase border-2 ${mostrarClientes ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-400'}`}>
             Clientes
           </button>
         </div>
       </div>
 
-      {/* CONTENEDOR DEL MAPA DINÁMICO */}
-      <div className="bg-white p-2 rounded-[35px] shadow-sm border border-slate-100 overflow-hidden h-[500px] z-0">
+      <div className="bg-white p-2 rounded-[40px] shadow-md border border-slate-100 h-[500px] overflow-hidden">
         <MapaSinSSR 
-          visitas={visitas} 
+          visitas={puntosMapa} 
           puntosClientes={puntosClientes} 
           mostrarClientes={mostrarClientes} 
           parseCoords={parseCoords} 
