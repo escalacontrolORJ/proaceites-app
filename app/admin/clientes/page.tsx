@@ -20,6 +20,7 @@ export default function ClientesPage() {
     nombre_fiscal: '',
     propietario: '',
     direccion: '',
+    ciudad: '', // CAMBIO: Nuevo campo ciudad
     ubicacion_gps: '',
     foto_local: ''
   })
@@ -65,137 +66,170 @@ export default function ClientesPage() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: { exact: "environment" } } 
-      }).catch(() => navigator.mediaDevices.getUserMedia({ video: true }))
+      }).catch(() => {
+        return navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      })
+      
       if (videoRef.current) videoRef.current.srcObject = stream
-    } catch (err) { console.error("Error Cámara", err) }
+    } catch (err) {
+      console.error("Error Cámara", err)
+    }
   }
 
   function detenerCamara() {
     if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks()
-      tracks.forEach(track => track.stop())
+      const stream = videoRef.current.srcObject as MediaStream
+      stream.getTracks().forEach(track => track.stop())
+      videoRef.current.srcObject = null
     }
-  }
-
-  const abrirEditar = (cliente: any) => {
-    setEditandoId(cliente.id)
-    setClienteForm({
-      nombre_local: cliente.nombre_local || '',
-      nombre_fiscal: cliente.nombre_fiscal || '',
-      propietario: cliente.propietario || '',
-      direccion: cliente.direccion || '',
-      ubicacion_gps: cliente.ubicacion_gps || '',
-      foto_local: cliente.foto_local || ''
-    })
-    setMostrarModal(true)
   }
 
   async function guardarCliente(e: React.FormEvent) {
     e.preventDefault()
     setGuardando(true)
-
     try {
-      let urlFoto = clienteForm.foto_local
+      let fotoUrl = clienteForm.foto_local
 
-      // Solo tomamos foto nueva si la cámara está activa y detectamos movimiento (opcional)
-      const canvas = canvasRef.current
-      const video = videoRef.current
-      if (canvas && video && video.readyState === 4) {
+      if (videoRef.current && canvasRef.current) {
+        const video = videoRef.current
+        const canvas = canvasRef.current
         canvas.width = video.videoWidth
         canvas.height = video.videoHeight
         canvas.getContext('2d')?.drawImage(video, 0, 0)
+        
         const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.7))
         if (blob) {
-          const fileName = `local_${Date.now()}.jpg`
-          await supabase.storage.from('fotos_asistencia').upload(`fotos_locales/${fileName}`, blob)
-          const { data: { publicUrl } } = supabase.storage.from('fotos_asistencia').getPublicUrl(`fotos_locales/${fileName}`)
-          urlFoto = publicUrl
+          const fileName = `cliente_${Date.now()}.jpg`
+          const { error: uploadError } = await supabase.storage
+            .from('fotos_asistencia')
+            .upload(fileName, blob)
+          
+          if (!uploadError) {
+            const { data: { publicUrl } } = supabase.storage
+              .from('fotos_asistencia')
+              .getPublicUrl(fileName)
+            fotoUrl = publicUrl
+          }
         }
       }
 
-      const datosFinales = {
-        ...clienteForm,
-        foto_local: urlFoto,
-        fecha_creacion: new Date().toISOString().split('T')[0]
-      }
+      const datos = { ...clienteForm, foto_local: fotoUrl }
 
       if (editandoId) {
-        const { error } = await supabase.from('clientes').update(datosFinales).eq('id', editandoId)
-        if (error) throw error
+        await supabase.from('clientes').update(datos).eq('id', editandoId)
       } else {
-        const { error } = await supabase.from('clientes').insert([datosFinales])
-        if (error) throw error
+        await supabase.from('clientes').insert([datos])
       }
 
       setMostrarModal(false)
-      setEditandoId(null)
       fetchClientes()
-      alert(editandoId ? "Actualizado" : "Guardado")
+      setClienteForm({ nombre_local: '', nombre_fiscal: '', propietario: '', direccion: '', ciudad: '', ubicacion_gps: '', foto_local: '' })
+      setEditandoId(null)
     } catch (err) {
-      alert("Error al procesar")
-    } finally { setGuardando(false) }
+      console.error(err)
+    } finally {
+      setGuardando(false)
+    }
   }
 
-  async function eliminarCliente(id: string) {
-    if (!confirm("¿Seguro que deseas eliminar este cliente?")) return
-    const { error } = await supabase.from('clientes').delete().eq('id', id)
-    if (error) alert("Error")
-    else fetchClientes()
+  const eliminarCliente = async (id: string) => {
+    if (!confirm('¿Eliminar este cliente?')) return
+    await supabase.from('clientes').delete().eq('id', id)
+    fetchClientes()
   }
 
   const clientesFiltrados = clientes.filter(c => 
-    c.nombre_local?.toLowerCase().includes(filtro.toLowerCase()) || 
-    c.nombre_fiscal?.toLowerCase().includes(filtro.toLowerCase())
+    c.nombre_local?.toLowerCase().includes(filtro.toLowerCase()) ||
+    c.nombre_fiscal?.toLowerCase().includes(filtro.toLowerCase()) ||
+    c.ciudad?.toLowerCase().includes(filtro.toLowerCase())
   )
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
       <AdminNav />
-      <main className="p-4 max-w-4xl mx-auto pb-24">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-black italic uppercase tracking-tighter text-slate-800">Clientes</h1>
-          <button onClick={() => { setEditandoId(null); setClienteForm({nombre_local:'', nombre_fiscal:'', propietario:'', direccion:'', ubicacion_gps:'', foto_local:''}); setMostrarModal(true); }} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black uppercase text-xs shadow-lg">
-            + Nuevo
+      
+      <main className="max-w-4xl mx-auto p-4 space-y-6">
+        <div className="flex justify-between items-end">
+          <div>
+            <p className="text-[10px] font-black uppercase text-blue-600 tracking-widest">Panel de Control</p>
+            <h1 className="text-3xl font-black italic uppercase tracking-tighter">Clientes</h1>
+          </div>
+          <button 
+            onClick={() => { setEditandoId(null); setMostrarModal(true); }}
+            className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black uppercase text-xs shadow-lg active:scale-95 transition-all"
+          >
+            + Nuevo Cliente
           </button>
         </div>
 
-        <input type="text" placeholder="Buscar por nombre..." className="w-full p-4 rounded-2xl border-none shadow-sm mb-6 font-bold" value={filtro} onChange={(e) => setFiltro(e.target.value)} />
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {clientesFiltrados.map((c) => (
-            <div key={c.id} className="bg-white p-4 rounded-[30px] shadow-sm border border-slate-100 flex items-center gap-4">
-              <img src={c.foto_local || 'https://via.placeholder.com/100'} className="w-16 h-16 rounded-2xl object-cover bg-slate-100" />
-              <div className="flex-1">
-                <h3 className="font-black text-slate-800 uppercase text-xs">{c.nombre_local || c.nombre_fiscal}</h3>
-                <p className="text-[9px] text-slate-400 font-bold uppercase">{c.propietario}</p>
-                <div className="flex gap-3 mt-2">
-                  <button onClick={() => abrirEditar(c)} className="text-[9px] font-black text-blue-600 uppercase">Editar</button>
-                  <button onClick={() => eliminarCliente(c.id)} className="text-[9px] font-black text-rose-500 uppercase">Borrar</button>
-                  {c.ubicacion_gps && <button onClick={() => window.open(`https://www.google.com/maps?q=${c.ubicacion_gps}`, '_blank')} className="text-[9px] font-black text-emerald-600 uppercase">Mapa</button>}
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="relative">
+          <input 
+            type="text"
+            placeholder="Buscar por nombre, RUC o ciudad..."
+            className="w-full p-5 bg-white rounded-[25px] shadow-sm border-none outline-none font-bold text-sm"
+            value={filtro}
+            onChange={e => setFiltro(e.target.value)}
+          />
         </div>
 
+        {loading ? (
+          <div className="text-center py-20 animate-pulse font-black uppercase text-xs text-slate-400">Cargando base de datos...</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {clientesFiltrados.map(c => (
+              <div key={c.id} className="bg-white p-5 rounded-[35px] shadow-sm flex items-center justify-between border border-transparent hover:border-blue-100 transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-slate-100 rounded-2xl overflow-hidden flex-shrink-0 border border-slate-50">
+                    {c.foto_local ? (
+                      <img src={c.foto_local} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-300">📍</div>
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-black uppercase text-sm leading-tight">{c.nombre_local || 'Sin Nombre'}</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                      {c.ciudad ? `${c.ciudad} | ` : ''}{c.nombre_fiscal || 'Sin RUC'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => { setEditandoId(c.id); setClienteForm(c); setMostrarModal(true); }} className="p-3 bg-slate-50 rounded-xl hover:bg-blue-50 text-blue-600">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                  </button>
+                  <button onClick={() => eliminarCliente(c.id)} className="p-3 bg-slate-50 rounded-xl hover:bg-red-50 text-red-600">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {mostrarModal && (
-          <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-md rounded-[40px] p-6 max-h-[95vh] overflow-y-auto">
-              <h2 className="text-xl font-black uppercase italic mb-4 text-center">{editandoId ? 'Editar Cliente' : 'Nuevo Cliente'}</h2>
-              
-              <div className="relative aspect-video bg-black rounded-3xl overflow-hidden mb-4 border-2 border-slate-100">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-md rounded-[45px] shadow-2xl overflow-hidden p-8 space-y-6">
+              <header>
+                <h2 className="text-2xl font-black uppercase italic tracking-tighter">{editandoId ? 'Editar Cliente' : 'Nuevo Cliente'}</h2>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{gpsReady ? '🛰️ Ubicación Obtenida' : '📡 Buscando satélites...'}</p>
+              </header>
+
+              <div className="relative aspect-video bg-black rounded-[30px] overflow-hidden border-4 border-slate-50 shadow-inner">
                 <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
                 <canvas ref={canvasRef} className="hidden" />
-                <div className="absolute bottom-3 left-3 flex gap-2">
-                  <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${gpsReady ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white animate-pulse'}`}>
-                    {gpsReady ? '📍 GPS OK' : '🛰️ Buscando...'}
-                  </span>
+                <div className="absolute top-3 right-3">
+                  <div className={`w-3 h-3 rounded-full ${gpsReady ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]' : 'bg-red-500 animate-pulse'}`}></div>
                 </div>
               </div>
 
               <form onSubmit={guardarCliente} className="space-y-3">
                 <input placeholder="Nombre Comercial" required className="w-full p-4 bg-slate-100 rounded-2xl border-none font-bold text-sm" value={clienteForm.nombre_local} onChange={e => setClienteForm({...clienteForm, nombre_local: e.target.value})} />
-                <input placeholder="Nombre Fiscal / RUC" className="w-full p-4 bg-slate-100 rounded-2xl border-none font-bold text-sm" value={clienteForm.nombre_fiscal} onChange={e => setClienteForm({...clienteForm, nombre_fiscal: e.target.value})} />
+                
+                <div className="grid grid-cols-2 gap-2">
+                   <input placeholder="Nombre Fiscal / RUC" className="w-full p-4 bg-slate-100 rounded-2xl border-none font-bold text-sm" value={clienteForm.nombre_fiscal} onChange={e => setClienteForm({...clienteForm, nombre_fiscal: e.target.value})} />
+                   <input placeholder="Ciudad" required className="w-full p-4 bg-slate-100 rounded-2xl border-none font-bold text-sm" value={clienteForm.ciudad} onChange={e => setClienteForm({...clienteForm, ciudad: e.target.value})} />
+                </div>
+
                 <input placeholder="Propietario" required className="w-full p-4 bg-slate-100 rounded-2xl border-none font-bold text-sm" value={clienteForm.propietario} onChange={e => setClienteForm({...clienteForm, propietario: e.target.value})} />
                 <textarea placeholder="Dirección" required className="w-full p-4 bg-slate-100 rounded-2xl border-none font-bold text-sm h-20" value={clienteForm.direccion} onChange={e => setClienteForm({...clienteForm, direccion: e.target.value})} />
                 
