@@ -1,175 +1,158 @@
 'use client'
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api'
 
-export default function DashboardPage() {
-  const [loading, setLoading] = useState(true)
-  const [gpsReady, setGpsReady] = useState(false)
-  const [cameraReady, setCameraReady] = useState(false)
-  const [coords, setCoords] = useState('')
-  const [yaEntro, setYaEntro] = useState(false)
-  const [status, setStatus] = useState('Iniciando...')
+// Configuración del mapa
+const containerStyle = { width: '100%', height: 'calc(100vh - 250px)', borderRadius: '20px' }
+const center = { lat: -0.1807, lng: -78.4678 } // Ajusta a tu ciudad por defecto
+
+export default function SeguimientoPage() {
+  const [vendedores, setVendedores] = useState([])
+  const [clientes, setClientes] = useState([])
+  const [visitas, setVisitas] = useState([])
+  const [puntosClientes, setPuntosClientes] = useState([])
   
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const router = useRouter()
+  // Filtros
+  const [vendedorId, setVendedorId] = useState('all')
+  const [fechaInicio, setFechaInicio] = useState(new Date().toISOString().split('T')[0])
+  const [fechaFin, setFechaFin] = useState(new Date().toISOString().split('T')[0])
+  const [mostrarClientes, setMostrarClientes] = useState(true)
+
+  const [selectedMarker, setSelectedMarker] = useState(null)
+
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: "TU_API_KEY_DE_GOOGLE_MAPS_AQUI"
+  })
 
   useEffect(() => {
-    const protegerRuta = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.replace('/login')
-        return
-      }
-      const estadoLocal = localStorage.getItem('asistencia_estado')
-      if (estadoLocal === 'INGRESO_REALIZADO') setYaEntro(true)
-      setLoading(false)
-      iniciarSensores()
-    }
-    protegerRuta()
-  }, [router])
+    fetchFiltros()
+    cargarDatos()
+  }, [])
 
-  const handleSignOut = async () => {
-    if (!confirm("¿Cerrar sesión?")) return
-    await supabase.auth.signOut()
-    localStorage.removeItem('asistencia_estado')
-    router.replace('/login')
+  const fetchFiltros = async () => {
+    const { data: v } = await supabase.from('usuarios').select('id, nombre')
+    const { data: c } = await supabase.from('clientes').select('id, nombre, ubicacion_gps')
+    if (v) setVendedores(v)
+    if (c) setPuntosClientes(c)
   }
 
-  const iniciarSensores = async () => {
-    setGpsReady(false)
-    setStatus('Buscando GPS...')
-    
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setCoords(`(${pos.coords.latitude}, ${pos.coords.longitude})`)
-          setGpsReady(true)
-          setStatus('GPS Listo')
-          iniciarCamara()
-        },
-        (err) => {
-          setStatus('ERROR: Activa el GPS y recarga')
-          console.error(err)
-        },
-        { enableHighAccuracy: true }
-      )
+  const cargarDatos = async () => {
+    let query = supabase.from('visitas').select(`
+      *,
+      clientes (nombre),
+      usuarios (nombre)
+    `)
+    .gte('fecha_hora', `${fechaInicio}T00:00:00`)
+    .lte('fecha_hora', `${fechaFin}T23:59:59`)
+
+    if (vendedorId !== 'all') {
+      query = query.eq('vendedor_id', vendedorId)
     }
+
+    const { data, error } = await query
+    if (data) setVisitas(data)
   }
 
-  const iniciarCamara = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user' } 
-      })
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        setCameraReady(true)
-      }
-    } catch (err) {
-      setStatus('ERROR: Activa la cámara')
-    }
-  }
-
-  const capturarYEnviar = async (tipoOriginal: 'INGRESO' | 'SALIDA') => {
-    setLoading(true)
-    setStatus(`Guardando ${tipoOriginal}...`)
-
-    try {
-      const video = videoRef.current
-      const canvas = canvasRef.current
-      if (!video || !canvas) return
-
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      canvas.getContext('2d')?.drawImage(video, 0, 0)
-      const fotoBase64 = canvas.toDataURL('image/jpeg', 0.5)
-
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error("Sesión expirada")
-
-      const tipoParaDB = tipoOriginal.toLowerCase()
-
-      const datos = {
-        empleado_id: session.user.id,
-        tipo_registro: tipoParaDB, 
-        fecha: new Date().toISOString().split('T')[0],
-        geolocalizacion: coords,
-        foto: fotoBase64,
-        fecha_hora: new Date().toISOString()
-      }
-
-      const { error: dbError } = await supabase.from('asistencia').insert([datos])
-
-      if (dbError) {
-        console.error("Error Supabase:", dbError)
-        alert(`ERROR AL GUARDAR: ${dbError.message}`)
-        throw dbError
-      }
-
-      if (tipoOriginal === 'INGRESO') {
-        localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
-        setYaEntro(true)
-      } else {
-        localStorage.removeItem('asistencia_estado')
-        setYaEntro(false)
-      }
-
-      setStatus(`¡${tipoOriginal} EXITOSO!`)
-      alert(`${tipoOriginal} registrado correctamente.`)
-
-    } catch (err: any) {
-      console.error(err)
-      setStatus('Error al registrar')
-      alert("Error: " + (err.message || "Fallo de conexión"))
-    } finally {
-      setLoading(false)
-    }
+  // Función para extraer lat/lng de strings tipo "(lat, lng)"
+  const parseCoords = (coordString) => {
+    if (!coordString) return null
+    const parts = coordString.replace(/[()]/g, '').split(',')
+    return { lat: parseFloat(parts[0]), lng: parseFloat(parts[1]) }
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white font-sans">
-      <div className="w-full max-w-sm flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-2xl font-black italic tracking-tighter uppercase">Proaceites</h1>
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Control Operativo</p>
-        </div>
-        <button onClick={handleSignOut} className="bg-slate-900 p-3 rounded-2xl border border-slate-800 text-slate-400 hover:text-white transition-colors">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        </button>
-      </div>
-
-      <div className="relative w-full max-w-sm aspect-[3/4] bg-black rounded-[40px] overflow-hidden border-2 border-slate-800 shadow-2xl mb-8">
-        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-        <canvas ref={canvasRef} className="hidden" />
+    <div className="space-y-4">
+      <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
+        <h1 className="text-xl font-black uppercase italic mb-4">Mapa de Seguimiento</h1>
         
-        {!gpsReady && (
-          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center p-8 text-center">
-            <p className="text-xs font-bold text-amber-400 uppercase mb-4">{status}</p>
+        {/* FILTROS */}
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="col-span-2">
+            <label className="text-[10px] font-bold uppercase text-slate-400 ml-2">Vendedor</label>
+            <select 
+              className="w-full p-3 bg-slate-50 rounded-xl text-xs font-bold"
+              value={vendedorId}
+              onChange={(e) => setVendedorId(e.target.value)}
+            >
+              <option value="all">Todos los vendedores</option>
+              {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+            </select>
           </div>
-        )}
+          
+          <div>
+            <label className="text-[10px] font-bold uppercase text-slate-400 ml-2">Desde</label>
+            <input type="date" className="w-full p-3 bg-slate-50 rounded-xl text-xs" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold uppercase text-slate-400 ml-2">Hasta</label>
+            <input type="date" className="w-full p-3 bg-slate-50 rounded-xl text-xs" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={cargarDatos} className="flex-1 bg-blue-600 text-white p-3 rounded-xl font-black text-[10px] uppercase">Filtrar Visitas</button>
+          <button 
+            onClick={() => setMostrarClientes(!mostrarClientes)} 
+            className={`flex-1 p-3 rounded-xl font-black text-[10px] uppercase border ${mostrarClientes ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-slate-50 text-slate-400'}`}
+          >
+            {mostrarClientes ? 'Ver Clientes: ON' : 'Ver Clientes: OFF'}
+          </button>
+        </div>
       </div>
 
-      <div className="w-full max-w-sm space-y-4">
-        <button 
-          onClick={() => capturarYEnviar(yaEntro ? 'SALIDA' : 'INGRESO')} 
-          disabled={!gpsReady || loading} 
-          className={`w-full p-8 rounded-[30px] font-black text-xl transition-all shadow-xl active:scale-95 disabled:opacity-30 ${yaEntro ? 'bg-rose-500 shadow-rose-900/40' : 'bg-emerald-500 shadow-emerald-900/40'}`}
-        >
-          {loading ? '...' : (yaEntro ? 'REGISTRAR SALIDA' : 'REGISTRAR INGRESO')}
-        </button>
-        <p className="text-center text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-4">{status}</p>
+      {/* MAPA */}
+      <div className="bg-white p-2 rounded-[30px] shadow-inner border border-slate-100 overflow-hidden">
+        {isLoaded ? (
+          <GoogleMap mapContainerStyle={containerStyle} center={center} zoom={13}>
+            
+            {/* Marcadores de Visitas Realizadas (Rojo/Azul) */}
+            {visitas.map((visita) => {
+              const pos = parseCoords(visita.geolocalizacion)
+              return pos && (
+                <Marker 
+                  key={visita.id} 
+                  position={pos} 
+                  icon="http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
+                  onClick={() => setSelectedMarker(visita)}
+                />
+              )
+            })}
 
-        {/* BOTÓN DE SEGUIMIENTO AÑADIDO ABAJO */}
-        <Link 
-          href="/admin/seguimiento" 
-          className="w-full p-5 bg-slate-900 border border-slate-800 rounded-[25px] flex items-center justify-center gap-3 hover:bg-blue-600 transition-all group"
-        >
-          <span className="text-xl">🗺️</span>
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-white">Ver Mapa de Seguimiento</span>
-        </Link>
+            {/* Marcadores de Ubicación Base de Clientes (Verde) */}
+            {mostrarClientes && puntosClientes.map((cliente) => {
+              const pos = parseCoords(cliente.ubicacion_gps)
+              return pos && (
+                <Marker 
+                  key={`cli-${cliente.id}`} 
+                  position={pos} 
+                  icon="http://maps.google.com/mapfiles/ms/icons/green-dot.png"
+                  opacity={0.6}
+                />
+              )
+            })}
+
+            {selectedMarker && (
+              <InfoWindow 
+                position={parseCoords(selectedMarker.geolocalizacion)} 
+                onCloseClick={() => setSelectedMarker(null)}
+              >
+                <div className="p-2 text-slate-800">
+                  <p className="font-black text-[10px] uppercase text-blue-600">{selectedMarker.usuarios?.nombre}</p>
+                  <p className="font-bold text-xs">{selectedMarker.clientes?.nombre}</p>
+                  <p className="text-[9px] text-slate-400">{new Date(selectedMarker.fecha_hora).toLocaleString()}</p>
+                </div>
+              </InfoWindow>
+            )}
+          </GoogleMap>
+        ) : <div className="h-[400px] flex items-center justify-center font-black uppercase text-xs">Cargando Mapa...</div>}
+      </div>
+
+      {/* Leyenda rápida */}
+      <div className="flex justify-center gap-4 text-[9px] font-black uppercase text-slate-400">
+        <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Visita</div>
+        <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Cliente Base</div>
       </div>
     </div>
   )
