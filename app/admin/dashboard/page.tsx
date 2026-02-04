@@ -82,9 +82,8 @@ export default function AdminDashboard() {
           <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">Operaciones de Campo</h2>
           <div className="grid grid-cols-2 gap-4">
             
-            {/* CORRECCIÓN: Si quieres marcar entrada como trabajador, usas /dashboard. 
-                Si quieres ver el reporte de asistencia, usas /admin/asistencia */}
-            <Link href="/dashboard" className="bg-emerald-500 text-white p-8 rounded-[40px] shadow-lg flex flex-col items-center gap-3 hover:bg-slate-900 transition-all">
+            {/* CORRECCIÓN REALIZADA: href cambiado a /admin/dashboard */}
+            <Link href="/admin/dashboard" className="bg-emerald-500 text-white p-8 rounded-[40px] shadow-lg flex flex-col items-center gap-3 hover:bg-slate-900 transition-all">
               <span className="text-3xl">🔑</span>
               <span className="font-black uppercase text-[10px] tracking-tighter">Marcar Entrada</span>
             </Link>
