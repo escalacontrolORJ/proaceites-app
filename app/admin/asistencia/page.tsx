@@ -38,15 +38,32 @@ export default function RegistrarVisita() {
   const activarCamaraYGPS = async () => {
     setStatus('Activando Cámara y GPS... ⏳')
     try {
-      // CAMBIO: Se especifica exact: "environment" para forzar cámara trasera
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: { exact: "environment" } } 
-      }).catch(() => {
-        // Fallback en caso de que "exact" falle en algunos navegadores
-        return navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-      })
+      // LÓGICA ROBUSTA PARA CÁMARA TRASERA
+      const constraints = {
+        video: { facingMode: { exact: "environment" } }
+      };
+
+      let stream;
+      try {
+        // Intento 1: Cámara trasera obligatoria
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (err) {
+        console.warn("Fallo cámara trasera exacta, intentando flexible...");
+        try {
+          // Intento 2: Cámara trasera preferida
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        } catch (err2) {
+          console.warn("Fallo cámara trasera flexible, usando cualquier cámara...");
+          // Intento 3: Cualquier cámara disponible
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+      }
       
-      if (videoRef.current) videoRef.current.srcObject = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        // Forzar play para iOS
+        videoRef.current.play().catch(e => console.error("Error al reproducir video", e));
+      }
       
       navigator.geolocation.watchPosition(
         (pos) => {
@@ -58,7 +75,8 @@ export default function RegistrarVisita() {
         { enableHighAccuracy: true }
       )
     } catch (err) {
-      setStatus('Error de Cámara')
+      console.error("Error crítico de cámara:", err);
+      setStatus('Error de Cámara: Verifique permisos')
     }
   }
 
@@ -183,7 +201,7 @@ export default function RegistrarVisita() {
         </div>
 
         <div className="relative aspect-square bg-black rounded-[40px] overflow-hidden shadow-2xl border-4 border-white">
-          <video ref={videoRef} autoPlay playsInline className={`w-full h-full object-cover ${fotoTomada ? 'hidden' : 'block'}`} />
+          <video ref={videoRef} autoPlay playsInline muted className={`w-full h-full object-cover ${fotoTomada ? 'hidden' : 'block'}`} />
           <canvas ref={canvasRef} className={`w-full h-full object-cover ${fotoTomada ? 'block' : 'hidden'}`} />
           
           {gpsReady && !fotoTomada && (
