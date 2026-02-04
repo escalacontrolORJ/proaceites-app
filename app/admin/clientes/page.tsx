@@ -9,6 +9,7 @@ export default function ClientesPage() {
   const [mostrarModal, setMostrarModal] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [gpsReady, setGpsReady] = useState(false)
+  const [fotoCapturada, setFotoCapturada] = useState(false) // Nuevo estado para control visual
   const [filtro, setFiltro] = useState('')
   const [editandoId, setEditandoId] = useState<string | null>(null)
 
@@ -20,7 +21,7 @@ export default function ClientesPage() {
     nombre_fiscal: '',
     propietario: '',
     direccion: '',
-    ciudad: '', // CAMBIO: Nuevo campo ciudad
+    ciudad: '',
     ubicacion_gps: '',
     foto_local: ''
   })
@@ -47,13 +48,14 @@ export default function ClientesPage() {
       if (error) throw error
       setClientes(data || [])
     } catch (err) {
-      console.error(err)
+      console.error("Error al obtener clientes:", err)
     } finally {
       setLoading(false)
     }
   }
 
   async function iniciarCamaraYGps() {
+    setFotoCapturada(false)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setClienteForm(prev => ({...prev, ubicacion_gps: `${pos.coords.latitude}, ${pos.coords.longitude}`}))
@@ -65,12 +67,15 @@ export default function ClientesPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: { exact: "environment" } } 
+        video: { facingMode: { ideal: "environment" } } 
       }).catch(() => {
-        return navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        return navigator.mediaDevices.getUserMedia({ video: true })
       })
       
-      if (videoRef.current) videoRef.current.srcObject = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        videoRef.current.play()
+      }
     } catch (err) {
       console.error("Error Cámara", err)
     }
@@ -84,19 +89,29 @@ export default function ClientesPage() {
     }
   }
 
+  // NUEVA FUNCIÓN: Captura visual de la foto
+  const tomarFoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current
+      const canvas = canvasRef.current
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      canvas.getContext('2d')?.drawImage(video, 0, 0)
+      setFotoCapturada(true)
+      // Detenemos la cámara para mostrar la captura fija
+      detenerCamara()
+    }
+  }
+
   async function guardarCliente(e: React.FormEvent) {
     e.preventDefault()
     setGuardando(true)
     try {
       let fotoUrl = clienteForm.foto_local
 
-      if (videoRef.current && canvasRef.current) {
-        const video = videoRef.current
+      // Subir la foto solo si se capturó una nueva
+      if (canvasRef.current && fotoCapturada) {
         const canvas = canvasRef.current
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
-        canvas.getContext('2d')?.drawImage(video, 0, 0)
-        
         const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.7))
         if (blob) {
           const fileName = `cliente_${Date.now()}.jpg`
@@ -116,16 +131,20 @@ export default function ClientesPage() {
       const datos = { ...clienteForm, foto_local: fotoUrl }
 
       if (editandoId) {
-        await supabase.from('clientes').update(datos).eq('id', editandoId)
+        const { error } = await supabase.from('clientes').update(datos).eq('id', editandoId)
+        if (error) throw error
       } else {
-        await supabase.from('clientes').insert([datos])
+        const { error } = await supabase.from('clientes').insert([datos])
+        if (error) throw error
       }
 
       setMostrarModal(false)
-      fetchClientes()
       setClienteForm({ nombre_local: '', nombre_fiscal: '', propietario: '', direccion: '', ciudad: '', ubicacion_gps: '', foto_local: '' })
       setEditandoId(null)
+      await fetchClientes() // Recargar lista inmediatamente
+      
     } catch (err) {
+      alert("Error al guardar: verifique su conexión o campos requeridos")
       console.error(err)
     } finally {
       setGuardando(false)
@@ -208,18 +227,35 @@ export default function ClientesPage() {
 
         {mostrarModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-md rounded-[45px] shadow-2xl overflow-hidden p-8 space-y-6">
+            <div className="bg-white w-full max-w-md rounded-[45px] shadow-2xl overflow-hidden p-8 space-y-6 max-h-[90vh] overflow-y-auto">
               <header>
                 <h2 className="text-2xl font-black uppercase italic tracking-tighter">{editandoId ? 'Editar Cliente' : 'Nuevo Cliente'}</h2>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{gpsReady ? '🛰️ Ubicación Obtenida' : '📡 Buscando satélites...'}</p>
               </header>
 
               <div className="relative aspect-video bg-black rounded-[30px] overflow-hidden border-4 border-slate-50 shadow-inner">
-                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                <canvas ref={canvasRef} className="hidden" />
-                <div className="absolute top-3 right-3">
-                  <div className={`w-3 h-3 rounded-full ${gpsReady ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]' : 'bg-red-500 animate-pulse'}`}></div>
-                </div>
+                <video ref={videoRef} autoPlay playsInline className={`w-full h-full object-cover ${fotoCapturada ? 'hidden' : 'block'}`} />
+                <canvas ref={canvasRef} className={`w-full h-full object-cover ${fotoCapturada ? 'block' : 'hidden'}`} />
+                
+                {!fotoCapturada && (
+                  <button 
+                    type="button"
+                    onClick={tomarFoto}
+                    className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/20 backdrop-blur-md border border-white/50 p-4 rounded-full active:scale-95 transition-all"
+                  >
+                    <div className="w-8 h-8 bg-white rounded-full shadow-lg"></div>
+                  </button>
+                )}
+
+                {fotoCapturada && (
+                  <button 
+                    type="button"
+                    onClick={() => { setFotoCapturada(false); iniciarCamaraYGps(); }}
+                    className="absolute top-4 right-4 bg-black/50 text-white text-[8px] font-black uppercase px-3 py-1 rounded-full backdrop-blur-sm"
+                  >
+                    🔄 Repetir
+                  </button>
+                )}
               </div>
 
               <form onSubmit={guardarCliente} className="space-y-3">
@@ -236,7 +272,7 @@ export default function ClientesPage() {
                 <div className="flex gap-2 pt-2">
                   <button type="button" onClick={() => setMostrarModal(false)} className="flex-1 p-4 font-black uppercase text-xs text-slate-400">Cancelar</button>
                   <button type="submit" disabled={guardando} className="flex-[2] p-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-sm shadow-lg disabled:bg-slate-300">
-                    {guardando ? 'Procesando...' : 'Confirmar'}
+                    {guardando ? 'Guardando...' : 'Confirmar'}
                   </button>
                 </div>
               </form>
