@@ -29,7 +29,6 @@ export default function ReporteAdministrativo() {
   async function fetchData() {
     setLoading(true)
     try {
-      // Cargar Catálogos para filtros (Ajustado a campos reales de tu DB)
       const { data: emps } = await supabase.from('empleados').select('id, nombres')
       const { data: clis } = await supabase.from('clientes').select('id, nombre_local, nombre_fiscal')
       setEmpleados(emps || [])
@@ -72,7 +71,6 @@ export default function ReporteAdministrativo() {
         setFilas(Object.values(agrupados).reverse())
       } else {
         const columnaFecha = tipoReporte === 'visitas' ? 'fecha' : 'proxima_visita'
-        // Join corregido para usar nombre_local y nombre_fiscal según tu tabla
         const { data: visitas, error } = await supabase
           .from('visitas')
           .select('*, clientes(nombre_local, nombre_fiscal)')
@@ -84,7 +82,6 @@ export default function ReporteAdministrativo() {
         setFilas((visitas || []).map(v => ({
           ...v,
           nombre_vendedor: nombresMap[v.vendedor_id] || nombresMap[v.empleado_id] || 'S/N',
-          // Priorizamos nombre_local que es el nombre comercial en tu formulario
           nombre_cliente: v.clientes?.nombre_local || v.clientes?.nombre_fiscal || 'S/N'
         })))
       }
@@ -108,8 +105,15 @@ export default function ReporteAdministrativo() {
       csvContent += "Empleado,Fecha,Entrada,Salida,Horas\n";
       filasFiltradas.forEach(r => csvContent += `${r.nombre},${r.fecha},${r.entrada?.hora || ''},${r.salida?.hora || ''},${r.horas}\n`);
     } else {
-      csvContent += "Vendedor,Cliente,Motivo,Valor,Observaciones,ProximaVisita\n";
-      filasFiltradas.forEach(r => csvContent += `${r.nombre_vendedor},${r.nombre_cliente},${r.motivo},${r.valor_transaccion},${r.observaciones},${r.proxima_visita}\n`);
+      const header = tipoReporte === 'visitas' ? "Vendedor,Cliente,Motivo,Valor,Observaciones\n" : "Vendedor,Cliente,Motivo,Observaciones,ProxVisita\n";
+      csvContent += header;
+      filasFiltradas.forEach(r => {
+        if (tipoReporte === 'visitas') {
+          csvContent += `${r.nombre_vendedor},${r.nombre_cliente},${r.motivo},${r.valor_transaccion},${r.observaciones}\n`;
+        } else {
+          csvContent += `${r.nombre_vendedor},${r.nombre_cliente},${r.motivo},${r.observaciones},${r.proxima_visita}\n`;
+        }
+      });
     }
     window.open(encodeURI(csvContent));
   }
@@ -120,16 +124,19 @@ export default function ReporteAdministrativo() {
       doc.setFontSize(16)
       doc.text(`Reporte de ${tipoReporte.toUpperCase()}`, 14, 15)
       doc.setFontSize(10)
-      doc.text(`Generado el: ${new Date().toLocaleDateString()} | Periodo: ${fechaDesde} a ${fechaHasta}`, 14, 22)
+      doc.text(`Periodo: ${fechaDesde} a ${fechaHasta}`, 14, 22)
 
-      const headers = tipoReporte === 'asistencia' 
-        ? [["Empleado", "Fecha", "Entrada", "Salida", "Horas"]]
-        : [["Vendedor", "Cliente", "Motivo", "Monto", "Fecha", "Prox. Visita"]]
-      
-      const data = filasFiltradas.map(r => tipoReporte === 'asistencia'
-        ? [r.nombre, r.fecha, r.entrada?.hora || '', r.salida?.hora || '', r.horas]
-        : [r.nombre_vendedor, r.nombre_cliente, r.motivo, `$${r.valor_transaccion}`, r.fecha, r.proxima_visita]
-      )
+      let headers, data;
+      if (tipoReporte === 'asistencia') {
+        headers = [["Empleado", "Fecha", "Entrada", "Salida", "Horas"]];
+        data = filasFiltradas.map(r => [r.nombre, r.fecha, r.entrada?.hora || '', r.salida?.hora || '', r.horas]);
+      } else if (tipoReporte === 'visitas') {
+        headers = [["Vendedor", "Cliente", "Motivo", "Monto", "Fecha"]];
+        data = filasFiltradas.map(r => [r.nombre_vendedor, r.nombre_cliente, r.motivo, `$${r.valor_transaccion}`, r.fecha]);
+      } else {
+        headers = [["Vendedor", "Cliente", "Motivo", "Prox. Visita", "Observaciones"]];
+        data = filasFiltradas.map(r => [r.nombre_vendedor, r.nombre_cliente, r.motivo, r.proxima_visita, r.observaciones]);
+      }
 
       autoTable(doc, { 
         head: headers, 
@@ -139,10 +146,9 @@ export default function ReporteAdministrativo() {
         headStyles: { fillColor: [30, 41, 59] }
       })
 
-      doc.save(`Reporte_${tipoReporte}_${fechaDesde}.pdf`)
+      doc.save(`Reporte_${tipoReporte}.pdf`)
     } catch (error) {
-      console.error("Error al generar PDF:", error)
-      alert("Hubo un error al generar el PDF. Revisa la consola.")
+      alert("Error al generar PDF");
     }
   }
 
@@ -210,8 +216,11 @@ export default function ReporteAdministrativo() {
                 <tr className="bg-white/5 text-[10px] font-black uppercase text-slate-500 tracking-widest">
                   <th className="p-6">Identificación</th>
                   <th className="p-6">{tipoReporte === 'asistencia' ? 'Ingreso' : 'Motivo / Fecha'}</th>
-                  <th className="p-6">{tipoReporte === 'asistencia' ? 'Salida' : 'Monto'}</th>
-                  <th className="p-6">Observaciones / Agenda</th>
+                  {/* Ocultamos Monto si es reporte de próximas visitas */}
+                  {tipoReporte !== 'proximas' && (
+                    <th className="p-6">{tipoReporte === 'asistencia' ? 'Salida' : 'Monto'}</th>
+                  )}
+                  <th className="p-6">{tipoReporte === 'asistencia' ? 'Jornada' : 'Observaciones / Agenda'}</th>
                   {tipoReporte !== 'asistencia' && <th className="p-6 text-center">Evidencia</th>}
                 </tr>
               </thead>
@@ -244,21 +253,26 @@ export default function ReporteAdministrativo() {
                         </div>
                       )}
                     </td>
-                    <td className="p-6">
-                      {tipoReporte === 'asistencia' ? (
-                        r.salida ? (
-                          <div className="flex items-center gap-3">
-                            <img src={r.salida.foto} className="w-10 h-10 rounded-lg object-cover border border-white/10" />
-                            <div>
-                              <p className="text-rose-400 font-black text-lg">{r.salida.hora}</p>
-                              <button onClick={() => abrirMapa(r.salida.gps)} className="text-[8px] font-black text-slate-500 underline">GPS</button>
+
+                    {/* Celda de Monto / Salida condicionada */}
+                    {tipoReporte !== 'proximas' && (
+                      <td className="p-6">
+                        {tipoReporte === 'asistencia' ? (
+                          r.salida ? (
+                            <div className="flex items-center gap-3">
+                              <img src={r.salida.foto} className="w-10 h-10 rounded-lg object-cover border border-white/10" />
+                              <div>
+                                <p className="text-rose-400 font-black text-lg">{r.salida.hora}</p>
+                                <button onClick={() => abrirMapa(r.salida.gps)} className="text-[8px] font-black text-slate-500 underline">GPS</button>
+                              </div>
                             </div>
-                          </div>
-                        ) : <span className="text-amber-500 font-black text-[9px] animate-pulse italic uppercase tracking-widest">En Turno</span>
-                      ) : (
-                        <p className="text-xl font-black text-white italic">${parseFloat(r.valor_transaccion || 0).toFixed(2)}</p>
-                      )}
-                    </td>
+                          ) : <span className="text-amber-500 font-black text-[9px] animate-pulse italic uppercase tracking-widest">En Turno</span>
+                        ) : (
+                          <p className="text-xl font-black text-white italic">${parseFloat(r.valor_transaccion || 0).toFixed(2)}</p>
+                        )}
+                      </td>
+                    )}
+
                     <td className="p-6">
                       {tipoReporte === 'asistencia' ? (
                         <div className="inline-block bg-slate-950 px-5 py-2 rounded-2xl border border-white/5">
@@ -266,7 +280,7 @@ export default function ReporteAdministrativo() {
                         </div>
                       ) : (
                         <div className="space-y-1">
-                          <p className="text-[10px] text-slate-400 italic leading-tight max-w-[200px] break-words">
+                          <p className="text-[10px] text-slate-400 italic leading-tight max-w-[250px] break-words">
                             {r.observaciones ? `"${r.observaciones}"` : 'Sin observaciones'}
                           </p>
                           {r.proxima_visita && (
