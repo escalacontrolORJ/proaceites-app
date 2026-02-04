@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
@@ -90,6 +89,7 @@ export default function DashboardPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error("Sesión expirada")
 
+      // CORRECCIÓN CLAVE: Convertir a minúsculas para cumplir con la Check Constraint de la DB
       const tipoParaDB = tipoOriginal.toLowerCase()
 
       const datos = {
@@ -160,16 +160,7 @@ export default function DashboardPage() {
         >
           {loading ? '...' : (yaEntro ? 'REGISTRAR SALIDA' : 'REGISTRAR INGRESO')}
         </button>
-        <p className="text-center text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-4">{status}</p>
-
-        {/* BOTÓN DE SEGUIMIENTO AÑADIDO ABAJO */}
-        <Link 
-          href="/admin/seguimiento" 
-          className="w-full p-5 bg-slate-900 border border-slate-800 rounded-[25px] flex items-center justify-center gap-3 hover:bg-blue-600 transition-all group"
-        >
-          <span className="text-xl">🗺️</span>
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-white">Ver Mapa de Seguimiento</span>
-        </Link>
+        <p className="text-center text-[10px] font-bold text-slate-600 uppercase tracking-widest">{status}</p>
       </div>
     </div>
   )

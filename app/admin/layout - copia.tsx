@@ -9,10 +9,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const menu = [
     { name: 'Inicio', path: '/admin/dashboard', icon: '🏠' },
     { name: 'Visitas', path: '/admin/asistencia', icon: '📍' },
-    { name: 'Clientes', path: '/admin/clientes', icon: '🏢' },
-    { name: 'Seguimiento', path: '/admin/seguimiento', icon: '🗺️' }, // OPCIÓN NUEVA AÑADIDA
-    { name: 'Reportes', path: '/admin/reportes', icon: '📊' },
-    { name: 'Personal', path: '/admin/usuarios', icon: '👤' },
+    { name: 'Clientes', path: '/admin/clientes', icon: '🏪' },
+    { name: 'Reportes', path: '/admin/reportes', icon: '📊' }, // REPORTE RECUPERADO
+    { name: 'Personal', path: '/admin/usuarios', icon: '👥' },
   ]
 
   return (
@@ -21,15 +20,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {children}
       </main>
 
-      {/* Navegación inferior que se ve en tu captura */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 h-20 flex justify-around items-center z-[9999] px-2 shadow-2xl">
         {menu.map((item) => {
           const isActive = pathname === item.path
           return (
             <Link key={item.path} href={item.path} className="flex flex-col items-center justify-center w-full">
-              <span className={`text-xl transition-all ${isActive ? 'scale-125' : 'grayscale'}`}>
-                {item.icon}
-              </span>
+              <span className={`text-xl transition-all ${isActive ? 'scale-125' : 'grayscale'}`}>{item.icon}</span>
               <span className={`text-[9px] font-black uppercase mt-1 ${isActive ? 'text-blue-600' : 'text-slate-400'}`}>
                 {item.name}
               </span>
