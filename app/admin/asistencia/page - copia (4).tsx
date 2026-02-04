@@ -37,61 +37,32 @@ export default function RegistrarVisita() {
 
   const activarCamaraYGPS = async () => {
     setStatus('Activando Cámara y GPS... ⏳')
-    
-    // 1. Detener cualquier flujo previo para liberar la cámara
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream
-      stream.getTracks().forEach(track => track.stop())
-    }
-
     try {
-      // 2. Solicitar estrictamente la cámara trasera (environment)
-      const constraints = {
-        video: {
-          facingMode: { exact: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: false
-      }
-
-      // Intentar primero con "exact" (fuerza la trasera)
-      let stream
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints)
-      } catch (e) {
-        // Fallback si "exact" falla (algunos navegadores antiguos)
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: "environment" } 
-        })
-      }
+      // SOLICITUD ESTRICTA DE CÁMARA TRASERA (ENVIRONMENT)
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: { ideal: "environment" } 
+        } 
+      })
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream
-        // Estos atributos son vitales para que el video cargue en móviles
-        videoRef.current.setAttribute("playsinline", "true")
-        videoRef.current.setAttribute("muted", "true")
+        videoRef.current.setAttribute("playsinline", "true") // Crucial para iPhone
         videoRef.current.play()
       }
       
-      // 3. Activar GPS
-      navigator.geolocation.getCurrentPosition(
+      navigator.geolocation.watchPosition(
         (pos) => {
           setCoords(`${pos.coords.latitude}, ${pos.coords.longitude}`)
           setGpsReady(true)
           setStatus('Sistemas Listos ✅')
         },
-        (err) => {
-          console.error(err)
-          setStatus('Error GPS: Active ubicación')
-        },
+        (err) => setStatus('Error GPS: active la ubicación'),
         { enableHighAccuracy: true }
       )
-
     } catch (err) {
       console.error("Error de cámara:", err)
       setStatus('Error de Cámara: Verifique permisos')
-      alert("No se pudo acceder a la cámara trasera. Asegúrese de dar permisos de cámara en el navegador.")
     }
   }
 
@@ -101,14 +72,11 @@ export default function RegistrarVisita() {
     if (video && canvas) {
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
-      const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.drawImage(video, 0, 0)
-        setFotoTomada(true)
-        // Apagar la cámara tras tomar la foto
-        if (video.srcObject) {
-          (video.srcObject as MediaStream).getTracks().forEach(track => track.stop())
-        }
+      canvas.getContext('2d')?.drawImage(video, 0, 0)
+      setFotoTomada(true)
+      // Detenemos la cámara para ahorrar batería tras la captura
+      if (video.srcObject) {
+        (video.srcObject as MediaStream).getTracks().forEach(track => track.stop())
       }
     }
   }
@@ -154,6 +122,7 @@ export default function RegistrarVisita() {
       if (insertError) throw insertError
 
       alert("✅ Visita registrada con éxito")
+      
       setFotoTomada(false)
       setForm({ cliente_id: '', motivo: 'Visita', valor: 0, proxima_visita: '', observaciones: '' })
       setStatus('Listo para nuevo registro')
@@ -169,7 +138,7 @@ export default function RegistrarVisita() {
     <div className="min-h-screen bg-slate-50 p-4 pb-24 text-slate-900 font-sans">
       <div className="max-w-lg mx-auto space-y-6">
         <header className="flex justify-between items-center">
-          <h1 className="text-2xl font-black italic uppercase tracking-tighter">Registro de Visita</h1>
+          <h1 className="text-2xl font-black italic uppercase tracking-tighter text-slate-900">Registro de Visita</h1>
         </header>
 
         <div className={`p-4 rounded-3xl text-center font-black uppercase text-[10px] tracking-widest shadow-sm ${gpsReady ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600 animate-pulse'}`}>
@@ -204,7 +173,12 @@ export default function RegistrarVisita() {
 
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Agendar Próxima Visita</label>
-            <input type="date" value={form.proxima_visita} className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" onChange={e => setForm({...form, proxima_visita: e.target.value})} />
+            <input 
+              type="date" 
+              value={form.proxima_visita}
+              className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" 
+              onChange={e => setForm({...form, proxima_visita: e.target.value})} 
+            />
           </div>
 
           <div className="space-y-1">
@@ -240,13 +214,13 @@ export default function RegistrarVisita() {
               disabled={loading || !gpsReady || !form.cliente_id} 
               className="w-full bg-slate-900 text-white p-6 rounded-[30px] font-black text-lg shadow-xl disabled:bg-slate-400 active:scale-95 transition-all"
             >
-              {loading ? 'GRABANDO...' : '🚀 FINALIZAR Y GUARDAR'}
+              {loading ? 'GRABANDO EN NUBE...' : '🚀 FINALIZAR Y GUARDAR'}
             </button>
             <button 
               onClick={() => { setFotoTomada(false); activarCamaraYGPS(); }} 
               className="w-full text-[10px] font-black uppercase text-slate-400 text-center tracking-widest"
             >
-              🔄 Volver a tomar foto
+              🔄 Tomar otra foto
             </button>
           </div>
         )}
