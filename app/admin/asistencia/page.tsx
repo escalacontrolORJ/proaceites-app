@@ -38,31 +38,17 @@ export default function RegistrarVisita() {
   const activarCamaraYGPS = async () => {
     setStatus('Activando Cámara y GPS... ⏳')
     try {
-      // LÓGICA ROBUSTA PARA CÁMARA TRASERA
-      const constraints = {
-        video: { facingMode: { exact: "environment" } }
-      };
-
-      let stream;
-      try {
-        // Intento 1: Cámara trasera obligatoria
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-      } catch (err) {
-        console.warn("Fallo cámara trasera exacta, intentando flexible...");
-        try {
-          // Intento 2: Cámara trasera preferida
-          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        } catch (err2) {
-          console.warn("Fallo cámara trasera flexible, usando cualquier cámara...");
-          // Intento 3: Cualquier cámara disponible
-          stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        }
-      }
+      // SOLICITUD ESTRICTA DE CÁMARA TRASERA (ENVIRONMENT)
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: { ideal: "environment" } 
+        } 
+      })
       
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        // Forzar play para iOS
-        videoRef.current.play().catch(e => console.error("Error al reproducir video", e));
+        videoRef.current.srcObject = stream
+        videoRef.current.setAttribute("playsinline", "true") // Crucial para iPhone
+        videoRef.current.play()
       }
       
       navigator.geolocation.watchPosition(
@@ -75,7 +61,7 @@ export default function RegistrarVisita() {
         { enableHighAccuracy: true }
       )
     } catch (err) {
-      console.error("Error crítico de cámara:", err);
+      console.error("Error de cámara:", err)
       setStatus('Error de Cámara: Verifique permisos')
     }
   }
@@ -88,6 +74,7 @@ export default function RegistrarVisita() {
       canvas.height = video.videoHeight
       canvas.getContext('2d')?.drawImage(video, 0, 0)
       setFotoTomada(true)
+      // Detenemos la cámara para ahorrar batería tras la captura
       if (video.srcObject) {
         (video.srcObject as MediaStream).getTracks().forEach(track => track.stop())
       }
