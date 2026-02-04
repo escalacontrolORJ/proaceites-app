@@ -61,7 +61,6 @@ export default function AdminDashboard() {
 
       <main className="p-6 space-y-8 max-w-lg mx-auto">
         
-        {/* Resumen Rápido */}
         <section className="grid grid-cols-3 gap-3">
           <div className="bg-white p-4 rounded-[30px] shadow-sm text-center">
             <p className="text-[20px] font-black">{stats.clientes}</p>
@@ -77,13 +76,12 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        {/* Menú de Gestión */}
         <section className="space-y-4">
           <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">Operaciones de Campo</h2>
           <div className="grid grid-cols-2 gap-4">
             
-            {/* CORRECCIÓN REALIZADA: href cambiado a /admin/dashboard */}
-            <Link href="/admin/dashboard" className="bg-emerald-500 text-white p-8 rounded-[40px] shadow-lg flex flex-col items-center gap-3 hover:bg-slate-900 transition-all">
+            {/* RUTA CORREGIDA: /admin/empleados */}
+            <Link href="/admin/empleados" className="bg-emerald-500 text-white p-8 rounded-[40px] shadow-lg flex flex-col items-center gap-3 hover:bg-slate-900 transition-all">
               <span className="text-3xl">🔑</span>
               <span className="font-black uppercase text-[10px] tracking-tighter">Marcar Entrada</span>
             </Link>
