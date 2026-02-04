@@ -114,11 +114,10 @@ export default function RegistrarVisita() {
 
       alert("✅ Visita registrada con éxito")
       
-      // RESETEAR FORMULARIO PARA NUEVA VISITA
+      // RESETEAR TODO EL FORMULARIO
       setFotoTomada(false)
       setForm({ cliente_id: '', motivo: 'Visita', valor: 0, proxima_visita: '', observaciones: '' })
       setStatus('Listo para nuevo registro')
-      // Nos mantenemos en la misma página (No redirigimos al dashboard)
       
     } catch (err: any) {
       alert("Error: " + (err.message || "No se pudo guardar"))
@@ -131,7 +130,7 @@ export default function RegistrarVisita() {
     <div className="min-h-screen bg-slate-50 p-4 pb-24 text-slate-900 font-sans">
       <div className="max-w-lg mx-auto space-y-6">
         <header className="flex justify-between items-center">
-          <h1 className="text-2xl font-black italic uppercase tracking-tighter text-slate-900">Registro de Visita</h1>
+          <h1 className="text-2xl font-black italic uppercase tracking-tighter">Registro de Visita</h1>
         </header>
 
         <div className={`p-4 rounded-3xl text-center font-black uppercase text-[10px] tracking-widest shadow-sm ${gpsReady ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600 animate-pulse'}`}>
@@ -162,6 +161,17 @@ export default function RegistrarVisita() {
               <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Valor $</label>
               <input type="number" step="0.01" value={form.valor} className="w-full bg-slate-50 p-4 rounded-2xl font-bold" onChange={e => setForm({...form, valor: Number(e.target.value)})} />
             </div>
+          </div>
+
+          {/* CAMPO REINSTAURADO: PRÓXIMA VISITA */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Agendar Próxima Visita</label>
+            <input 
+              type="date" 
+              value={form.proxima_visita}
+              className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" 
+              onChange={e => setForm({...form, proxima_visita: e.target.value})} 
+            />
           </div>
 
           <div className="space-y-1">
