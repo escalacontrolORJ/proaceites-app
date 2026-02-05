@@ -14,6 +14,7 @@ export default function SeguimientoPage() {
   const [puntosClientes, setPuntosClientes] = useState<any[]>([])
   const [puntosMapa, setPuntosMapa] = useState<any[]>([])
   
+  // Usamos 'filtroEmpleado' para ser consistentes con tu archivo de reportes
   const [vendedorId, setVendedorId] = useState('')
   const [fechaInicio, setFechaInicio] = useState(new Date().toISOString().split('T')[0])
   const [fechaFin, setFechaFin] = useState(new Date().toISOString().split('T')[0])
@@ -26,9 +27,11 @@ export default function SeguimientoPage() {
   }, [])
 
   async function inicializarDatos() {
-    const { data: emps } = await supabase.from('empleados').select('*').order('nombres')
+    // AJUSTE REALIZADO: Ahora consulta la tabla 'empleados' para el selector
+    const { data: emps } = await supabase.from('empleados').select('*').order('nombre')
     if (emps) setVendedores(emps)
 
+    // 2. Cargar Clientes
     const { data: clis } = await supabase.from('clientes').select('*').order('nombre_local')
     if (clis) setPuntosClientes(clis)
 
@@ -36,6 +39,7 @@ export default function SeguimientoPage() {
   }
 
   async function cargarDatos() {
+    // Usamos la tabla 'visitas' y los campos que verificamos en el CSV y Reporte
     let query = supabase.from('visitas').select('*')
       .gte('fecha', fechaInicio)
       .lte('fecha', fechaFin)
@@ -47,25 +51,17 @@ export default function SeguimientoPage() {
     const { data: visitasData } = await query
     
     if (visitasData) {
-      // Lista de colores oficiales de los marcadores que Leaflet soporta en la URL que usaremos
-      const coloresLeaflet = ['blue', 'red', 'orange', 'gold', 'violet', 'grey', 'black'];
-
       const formateados = visitasData.map((v: any) => {
+        // Buscamos nombres en las listas cargadas (como hace tu reporte)
         const vend = vendedores.find(u => u.id === v.vendedor_id)
         const clie = puntosClientes.find(c => c.id === v.cliente_id)
-        
-        // Asignamos un color basado en la posición del vendedor en la lista para que sea consistente
-        const indexColor = vendedores.findIndex(u => u.id === v.vendedor_id);
-        const colorAsignado = indexColor >= 0 ? coloresLeaflet[indexColor % coloresLeaflet.length] : 'blue';
-
         return {
           id: v.id,
           geolocalizacion: v.ubicacion_gps,
           fecha_hora: `${v.fecha} ${v.hora}`,
-          nombre_vendedor: vend?.nombres || 'Empleado',
+          nombre_vendedor: vend?.nombre || 'Empleado',
           nombre_cliente: clie?.nombre_local || 'Cliente Visitado',
-          foto: v.foto_local,
-          color: colorAsignado // Enviamos el nombre del color al componente del mapa
+          foto: v.foto_local
         }
       })
       setPuntosMapa(formateados)
@@ -99,7 +95,7 @@ export default function SeguimientoPage() {
             >
               <option value="">TODOS LOS VENDEDORES</option>
               {vendedores.map((v) => (
-                <option key={v.id} value={v.id}>{v.nombres}</option>
+                <option key={v.id} value={v.id}>{v.nombre}</option>
               ))}
             </select>
           </div>
