@@ -27,8 +27,8 @@ export default function SeguimientoPage() {
   }, [])
 
   async function inicializarDatos() {
-    // 1. Cargar Vendedores (Lógica exacta de tu reporte administrativo)
-    const { data: emps } = await supabase.from('usuarios').select('*').order('nombre')
+    // AJUSTE REALIZADO: Ahora consulta la tabla 'empleados' para el selector
+    const { data: emps } = await supabase.from('empleados').select('*').order('nombre')
     if (emps) setVendedores(emps)
 
     // 2. Cargar Clientes
@@ -127,7 +127,6 @@ export default function SeguimientoPage() {
         />
       </div>
 
-      {/* CONTADOR DE VISITAS REINCORPORADO */}
       <div className="flex justify-center mt-2">
          <span className="bg-blue-50 text-blue-600 px-6 py-2 rounded-full text-[10px] font-black uppercase border border-blue-100 shadow-sm">
            {puntosMapa.length} Visitas en el periodo

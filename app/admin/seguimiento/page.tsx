@@ -52,6 +52,50 @@ export default function SeguimientoPage() {
     
     if (visitasData) {
       const formateados = visitasData.map((v: any) => {
+// ... (resto del código igual hasta cargarDatos)
+
+  async function cargarDatos() {
+    let query = supabase.from('visitas').select('*')
+      .gte('fecha', fechaInicio)
+      .lte('fecha', fechaFin)
+
+    if (vendedorId !== '' && vendedorId !== 'all') {
+      query = query.eq('vendedor_id', vendedorId)
+    }
+
+    const { data: visitasData } = await query
+    
+    if (visitasData) {
+      // Función simple para generar un color basado en el texto
+      const generarColor = (texto: string) => {
+        const colores = ['blue', 'red', 'orange', 'gold', 'violet', 'black', 'grey'];
+        let hash = 0;
+        for (let i = 0; i < texto.length; i++) {
+          hash = texto.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        return colores[Math.abs(hash) % colores.length];
+      };
+
+      const formateados = visitasData.map((v: any) => {
+        const vend = vendedores.find(u => u.id === v.vendedor_id)
+        const clie = puntosClientes.find(c => c.id === v.cliente_id)
+        const nombreVend = vend?.nombres || 'Vendedor'; // Usamos 'nombres' según tu tabla empleados
+        
+        return {
+          id: v.id,
+          geolocalizacion: v.ubicacion_gps,
+          fecha_hora: `${v.fecha} ${v.hora}`,
+          nombre_vendedor: nombreVend,
+          nombre_cliente: clie?.nombre_local || 'Cliente Visitado',
+          foto: v.foto_local,
+          color: generarColor(nombreVend) // <--- ASIGNAMOS EL COLOR AQUÍ
+        }
+      })
+      setPuntosMapa(formateados)
+    }
+  }
+
+// ... (resto del código igual)
         // Buscamos nombres en las listas cargadas (como hace tu reporte)
         const vend = vendedores.find(u => u.id === v.vendedor_id)
         const clie = puntosClientes.find(c => c.id === v.cliente_id)
