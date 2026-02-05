@@ -38,14 +38,13 @@ export default function UsuariosPage() {
     setLoading(false)
   }
 
-  // FUNCIÓN PARA CREAR O EDITAR
   async function guardarUsuario(e: React.FormEvent) {
     e.preventDefault()
     setCreando(true)
     
     try {
       if (editandoId) {
-        // LÓGICA DE EDICIÓN
+        // ACTUALIZACIÓN DE DATOS EN TABLA
         const { error } = await supabase
           .from('empleados')
           .update({
@@ -58,7 +57,7 @@ export default function UsuariosPage() {
         if (error) throw error
         alert('Usuario actualizado correctamente')
       } else {
-        // LÓGICA DE CREACIÓN (Auth + Tabla)
+        // CREACIÓN EN AUTH Y TABLA
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: nuevoUsuario.email,
           password: nuevoUsuario.password,
@@ -77,7 +76,7 @@ export default function UsuariosPage() {
             }])
 
           if (dbError) throw dbError
-          alert('Usuario creado con éxito')
+          alert('Usuario creado con éxito en Autenticación y Tabla')
         }
       }
 
@@ -93,7 +92,7 @@ export default function UsuariosPage() {
   }
 
   async function eliminarUsuario(id: string) {
-    if (!confirm('¿Estás seguro de eliminar este usuario?')) return
+    if (!confirm('¿Seguro? Esto eliminará el registro de la tabla.')) return
     try {
       const { error } = await supabase.from('empleados').delete().eq('id', id)
       if (error) throw error
@@ -108,7 +107,7 @@ export default function UsuariosPage() {
     setNuevoUsuario({
       nombres: u.nombres,
       email: u.email,
-      password: '', // La clave no se recupera por seguridad
+      password: '', // Password vacío al editar por seguridad
       rol_empresa: u.rol_empresa
     })
     setMostrarModal(true)
@@ -124,7 +123,7 @@ export default function UsuariosPage() {
           </div>
           <button 
             onClick={() => { setEditandoId(null); setNuevoUsuario({nombres:'', email:'', password:'', rol_empresa:'Operario'}); setMostrarModal(true); }}
-            className="bg-blue-600 text-white px-6 py-4 rounded-2xl font-black uppercase text-xs shadow-xl shadow-blue-100 active:scale-95 transition-all"
+            className="bg-blue-600 text-white px-6 py-4 rounded-2xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all"
           >
             + Añadir Nuevo
           </button>
@@ -134,7 +133,7 @@ export default function UsuariosPage() {
           <input 
             type="text" 
             placeholder="Buscar por nombre o email..."
-            className="w-full p-5 bg-white rounded-3xl shadow-sm border-none text-sm font-bold placeholder:text-slate-300 outline-none"
+            className="w-full p-5 bg-white rounded-3xl shadow-sm border-none text-sm font-bold"
             value={busqueda}
             onChange={e => setBusqueda(e.target.value)}
           />
@@ -151,11 +150,10 @@ export default function UsuariosPage() {
                   </div>
                   <div>
                     <h3 className="font-black text-slate-800 uppercase text-sm leading-tight">{usuario.nombres}</h3>
-                    <p className="text-slate-400 text-[10px] font-bold">{usuario.email} • <span className="text-blue-500">{usuario.rol_empresa}</span></p>
+                    <p className="text-slate-400 text-[10px] font-bold">{usuario.email} • <span className="text-blue-600">{usuario.rol_empresa}</span></p>
                   </div>
                 </div>
                 
-                {/* BOTONES RECUPERADOS */}
                 <div className="flex gap-2">
                   <button onClick={() => prepararEdicion(usuario)} className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-blue-50 hover:text-blue-600 transition-colors">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
@@ -169,7 +167,7 @@ export default function UsuariosPage() {
         </div>
       </div>
 
-      {/* MODAL */}
+      {/* MODAL CON CAMPO CONTRASEÑA Y ROL */}
       {mostrarModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-[40px] p-8 shadow-2xl">
@@ -181,20 +179,24 @@ export default function UsuariosPage() {
               <input required className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-sm" placeholder="Nombre Completo" value={nuevoUsuario.nombres} onChange={e => setNuevoUsuario({...nuevoUsuario, nombres: e.target.value})}/>
               <input required type="email" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-sm" placeholder="Email" value={nuevoUsuario.email} onChange={e => setNuevoUsuario({...nuevoUsuario, email: e.target.value})}/>
               
+              {/* CAMPO CONTRASEÑA: Solo visible al crear nuevo */}
               {!editandoId && (
-                <input required type="password" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-sm" placeholder="Contraseña" value={nuevoUsuario.password} onChange={e => setNuevoUsuario({...nuevoUsuario, password: e.target.value})}/>
+                <input required type="password" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-sm" placeholder="Contraseña (mín. 6 caracteres)" value={nuevoUsuario.password} onChange={e => setNuevoUsuario({...nuevoUsuario, password: e.target.value})}/>
               )}
 
-              <select className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-sm" value={nuevoUsuario.rol_empresa} onChange={e => setNuevoUsuario({...nuevoUsuario, rol_empresa: e.target.value})}>
-                <option value="Operario">Operario</option>
-                <option value="Vendedor">Vendedor</option>
-                <option value="Supervisor">Supervisor</option>
-              </select>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Rol Asignado</label>
+                <select className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-sm appearance-none" value={nuevoUsuario.rol_empresa} onChange={e => setNuevoUsuario({...nuevoUsuario, rol_empresa: e.target.value})}>
+                  <option value="Operario">👷 Operario</option>
+                  <option value="Vendedor">💼 Vendedor</option>
+                  <option value="Supervisor">🔑 Supervisor</option>
+                </select>
+              </div>
 
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setMostrarModal(false)} className="flex-1 py-4 text-slate-400 font-bold uppercase text-xs">Cancelar</button>
-                <button type="submit" disabled={creando} className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black uppercase shadow-lg">
-                  {creando ? 'Guardando...' : (editandoId ? 'Actualizar' : 'Crear Usuario')}
+                <button type="submit" disabled={creando} className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black uppercase shadow-lg shadow-blue-200">
+                  {creando ? 'Guardando...' : (editandoId ? 'Actualizar' : 'Crear Acceso')}
                 </button>
               </div>
             </form>
