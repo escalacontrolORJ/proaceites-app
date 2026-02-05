@@ -1,109 +1,163 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import AdminNav from '@/components/AdminNav'
 
-export default function MarcadoAsistencia() {
+export default function GestionEmpleados() {
   const [empleados, setEmpleados] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [estadosAsistencia, setEstadosAsistencia] = useState<Record<string, any>>({})
-  const [busqueda, setBusqueda] = useState('')
+  const [form, setForm] = useState({ 
+    nombre: '', 
+    email: '', 
+    password: '', // Nuevo: requerido para crear el acceso
+    rol: 'vendedor', 
+    telefono: '' 
+  })
 
-  useEffect(() => { fetchEmpleados() }, [])
+  useEffect(() => {
+    fetchEmpleados()
+  }, [])
 
   async function fetchEmpleados() {
-    const { data } = await supabase.from('empleados').select('*').order('nombres')
-    if (data) {
-      setEmpleados(data)
-      fetchUltimosMovimientos(data)
-    }
+    const { data } = await supabase.from('empleados').select('*').order('nombre')
+    if (data) setEmpleados(data)
   }
 
-  async function fetchUltimosMovimientos(lista: any[]) {
-    const estados: Record<string, any> = {}
-    for (const emp of lista) {
-      const { data } = await supabase
-        .from('asistencia')
-        .select('*')
-        .eq('empleado_id', emp.id)
-        .order('fecha_hora', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      estados[emp.id] = data || null
-    }
-    setEstadosAsistencia(estados)
-  }
-
-  const registrar = async (empleado: any, tipo: 'ingreso' | 'salida') => {
+  const handleCrear = async (e: React.FormEvent) => {
+    e.preventDefault()
     setLoading(true)
-    const ahora = new Date()
-    
-    // Lógica de GPS con tiempo de espera corto para que no se quede "colgado"
-    let urlMapa = "Ubicación no disponible (Incógnito/Sin permiso)"
-    
+
     try {
-      const pos = await new Promise<any>((res, rej) => {
-        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 3000 });
-      });
-      urlMapa = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`
-    } catch (e) {
-      console.log("No se pudo obtener GPS, procediendo sin ubicación...");
-    }
+      // 1. CREAR EN AUTENTICACIÓN (Para que aparezca en la pestaña Authentication)
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: {
+          data: {
+            full_name: form.nombre,
+          }
+        }
+      })
 
-    const { error } = await supabase.from('asistencia').insert([{
-      empleado_id: empleado.id,
-      nombres: empleado.nombres,
-      tipo_registro: tipo,
-      fecha_hora: ahora.toISOString(),
-      fecha: ahora.toISOString().split('T')[0],
-      ubicacion: urlMapa
-    }])
+      if (authError) throw authError
 
-    if (!error) {
-      alert(`Registrado: ${tipo.toUpperCase()}`);
-      await fetchUltimosMovimientos(empleados);
-    } else {
-      alert("Error de base de datos: " + error.message);
+      if (authData.user) {
+        // 2. CREAR EN LA TABLA EMPLEADOS (Usando el mismo ID de la autenticación)
+        const { error: dbError } = await supabase.from('empleados').insert([{
+          id: authData.user.id, 
+          nombre: form.nombre,
+          email: form.email,
+          rol: form.rol,
+          telefono: form.telefono
+        }])
+
+        if (dbError) throw dbError
+
+        alert('Empleado creado con éxito en Autenticación y Tabla.')
+        setForm({ nombre: '', email: '', password: '', rol: 'vendedor', telefono: '' })
+        fetchEmpleados()
+      }
+    } catch (error: any) {
+      alert('Error: ' + error.message)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
+  }
+
+  const eliminarEmpleado = async (id: string) => {
+    if (!confirm('¿Seguro? Se eliminará de la tabla. Nota: El acceso en Autenticación debe borrarse manualmente desde el panel de Supabase.')) return
+    await supabase.from('empleados').delete().eq('id', id)
+    fetchEmpleados()
   }
 
   return (
-    <div className="p-4 max-w-md mx-auto bg-white min-h-screen text-black">
-      <h1 className="text-xl font-black text-blue-900 uppercase mb-4">Registro Libre</h1>
-      
-      <input 
-        type="text" placeholder="Buscar..." 
-        className="w-full p-3 rounded-xl border mb-4 text-sm"
-        onChange={(e) => setBusqueda(e.target.value)}
-      />
+    <div className="min-h-screen bg-slate-50">
+      <AdminNav />
+      <main className="p-4 max-w-4xl mx-auto">
+        
+        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 mb-8">
+          <h2 className="text-2xl font-black uppercase italic tracking-tighter mb-6">Nuevo Empleado</h2>
+          <form onSubmit={handleCrear} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input 
+              className="bg-slate-50 p-4 rounded-2xl border-none text-sm font-bold"
+              placeholder="Nombre Completo"
+              value={form.nombre}
+              onChange={e => setForm({...form, nombre: e.target.value})}
+              required
+            />
+            <input 
+              className="bg-slate-50 p-4 rounded-2xl border-none text-sm font-bold"
+              placeholder="Correo Electrónico"
+              type="email"
+              value={form.email}
+              onChange={e => setForm({...form, email: e.target.value})}
+              required
+            />
+            {/* CAMPO DE CONTRASEÑA AÑADIDO */}
+            <input 
+              className="bg-slate-50 p-4 rounded-2xl border-none text-sm font-bold"
+              placeholder="Contraseña (Mín. 6 caracteres)"
+              type="password"
+              value={form.password}
+              onChange={e => setForm({...form, password: e.target.value})}
+              required
+            />
+            <input 
+              className="bg-slate-50 p-4 rounded-2xl border-none text-sm font-bold"
+              placeholder="Teléfono"
+              value={form.telefono}
+              onChange={e => setForm({...form, telefono: e.target.value})}
+            />
+            <select 
+              className="bg-slate-50 p-4 rounded-2xl border-none text-sm font-bold"
+              value={form.rol}
+              onChange={e => setForm({...form, rol: e.target.value})}
+            >
+              <option value="vendedor">Vendedor</option>
+              <option value="admin">Administrador</option>
+            </select>
+            <button 
+              disabled={loading}
+              className="md:col-span-2 bg-blue-600 text-white p-5 rounded-2xl font-black uppercase shadow-lg shadow-blue-100 active:scale-95 transition-all"
+            >
+              {loading ? 'Procesando...' : 'Registrar Empleado'}
+            </button>
+          </form>
+        </div>
 
-      <div className="space-y-3">
-        {empleados.filter(e => e.nombres.toLowerCase().includes(busqueda.toLowerCase())).map(emp => {
-          const ultimo = estadosAsistencia[emp.id]
-          const esSalida = ultimo?.tipo_registro === 'ingreso'
-
-          return (
-            <div key={emp.id} className="p-4 border rounded-2xl shadow-sm bg-gray-50">
-              <div className="flex justify-between items-center mb-3">
-                <p className="font-bold text-sm uppercase">{emp.nombres}</p>
-                <span className="text-[9px] bg-white px-2 py-1 rounded border uppercase font-bold text-gray-400">
-                  {esSalida ? 'En turno' : 'Fuera'}
-                </span>
-              </div>
-              
-              <button 
-                disabled={loading}
-                onClick={() => registrar(emp, esSalida ? 'salida' : 'ingreso')}
-                className={`w-full py-3 rounded-xl font-black text-xs uppercase text-white shadow-md ${
-                  esSalida ? 'bg-orange-500' : 'bg-blue-600'
-                } ${loading ? 'opacity-50' : ''}`}
-              >
-                {loading ? 'Procesando...' : esSalida ? 'Marcar Salida' : 'Marcar Ingreso'}
-              </button>
-            </div>
-          )
-        })}
-      </div>
+        <div className="bg-white rounded-[40px] shadow-sm border border-slate-100 overflow-hidden text-[11px]">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50">
+                <th className="p-6 font-black uppercase text-slate-400">Empleado</th>
+                <th className="p-6 font-black uppercase text-slate-400">Rol</th>
+                <th className="p-6 text-right text-slate-400">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              {empleados.map(emp => (
+                <tr key={emp.id} className="border-t border-slate-50">
+                  <td className="p-6">
+                    <p className="font-bold text-slate-800">{emp.nombre}</p>
+                    <p className="text-slate-400">{emp.email}</p>
+                  </td>
+                  <td className="p-6">
+                    <span className="font-black uppercase bg-slate-100 px-3 py-1 rounded-full">{emp.rol}</span>
+                  </td>
+                  <td className="p-6 text-right">
+                    <button 
+                      onClick={() => eliminarEmpleado(emp.id)}
+                      className="text-red-500 font-bold uppercase active:scale-90 transition-all"
+                    >
+                      Eliminar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </main>
     </div>
   )
 }
