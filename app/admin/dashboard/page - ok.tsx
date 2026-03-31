@@ -72,73 +72,22 @@ export default function DashboardPage() {
     }
   }
 
-const capturarYEnviar = async (tipo: 'INGRESO' | 'SALIDA') => {
+  const capturarYEnviar = async (tipoOriginal: 'INGRESO' | 'SALIDA') => {
     setLoading(true)
-    setStatus(`Registrando ${tipo}...`)
+    setStatus(`Guardando ${tipoOriginal}...`)
 
     try {
+      const video = videoRef.current
+      const canvas = canvasRef.current
+      if (!video || !canvas) return
+
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      canvas.getContext('2d')?.drawImage(video, 0, 0)
+      const fotoBase64 = canvas.toDataURL('image/jpeg', 0.5)
+
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error("No hay sesión activa")
-
-      let fotoUrl = null
-      if (canvasRef.current && videoRef.current) {
-        const context = canvasRef.current.getContext('2d')
-        canvasRef.current.width = videoRef.current.videoWidth
-        canvasRef.current.height = videoRef.current.videoHeight
-        context?.drawImage(videoRef.current, 0, 0)
-        const blob = await new Promise<Blob | null>(res => canvasRef.current?.toBlob(res, 'image/jpeg', 0.7))
-        
-        if (blob) {
-          const fileName = `${session.user.id}/${Date.now()}.jpg`
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('fotos_asistencia')
-            .upload(fileName, blob)
-
-          if (uploadError) throw uploadError
-
-          const { data: publicUrl } = supabase.storage
-            .from('fotos_asistencia')
-            .getPublicUrl(fileName)
-          fotoUrl = publicUrl.publicUrl
-        }
-      }
-
-      // --- CAMBIO PARA LA HORA DE ECUADOR ---
-      const ahora = new Date();
-      
-      // Creamos la fecha formateada para Ecuador (ISO con -05:00)
-      // Esto le dice a Supabase exactamente qué hora es en Ecuador
-      const offset = -5; // Ecuador es UTC-5
-      const fechaEcuador = new Date(ahora.getTime() + (offset * 60 * 60 * 1000));
-      const isoEcuador = fechaEcuador.toISOString().replace('Z', '-05:00');
-      
-      // Fecha simple YYYY-MM-DD para la columna 'fecha'
-      const hoyEcuador = ahora.toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
-
-      const { error: dbError } = await supabase.from('asistencia').insert([{
-        empleado_id: session.user.id,
-        tipo_registro: tipo.toLowerCase(),
-        fecha_hora: isoEcuador, // Envia ej: 2026-03-31T15:08:27-05:00
-        fecha: hoyEcuador,      // Envia ej: 2026-03-31
-        geolocalizacion: coords,
-        foto: fotoUrl
-      }]);
-
-      if (dbError) throw dbError;
-      // ---------------------------------------
-
-      setYaEntro(tipo === 'INGRESO');
-      alert(`${tipo} registrado con éxito`);
-      setStatus('Listo');
-      
-    } catch (err: any) {
-      console.error(err);
-      alert(`Error: ${err.message}`);
-      setStatus('Error');
-    } finally {
-      setLoading(false)
-    }
-  }
+      if (!session) throw new Error("Sesión expirada")
 
       // CORRECCIÓN CLAVE: Convertir a minúsculas para cumplir con la Check Constraint de la DB
       const tipoParaDB = tipoOriginal.toLowerCase()
