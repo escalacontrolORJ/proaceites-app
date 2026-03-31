@@ -101,25 +101,24 @@ export default function DashboardPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error("Sesión expirada")
 
-      // --- LÓGICA DE HORA PARA ECUADOR ---
+      // --- AJUSTE DE HORA Y FECHA PARA REPORTE (ECUADOR UTC-5) ---
       const ahora = new Date();
       
-      // 1. Obtener la fecha/hora local de Ecuador en formato ISO compatible (YYYY-MM-DDTHH:mm:ss)
-      const horaEcuadorSucia = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" }).replace(' ', 'T');
-      
-      // 2. Agregar el offset de Ecuador (-05:00) para que Postgres no lo mueva a UTC
-      const fechaHoraFinal = `${horaEcuadorSucia}-05:00`;
-      
-      // 3. Fecha simple para la columna de filtrado
-      const fechaSoloEcuador = horaEcuadorSucia.split('T')[0];
+      // 1. Extraemos fecha y hora local de Ecuador usando formato ISO sueco (YYYY-MM-DD)
+      const opciones = { timeZone: "America/Guayaquil", hour12: false };
+      const localEcuador = ahora.toLocaleString("sv-SE", opciones); 
+      const [fechaEcu, horaEcu] = localEcuador.split(' ');
+
+      // 2. Formato con offset explícito para que PostgreSQL no lo mueva
+      const fechaHoraFinal = `${fechaEcu}T${horaEcu}-05:00`;
 
       const datos = {
         empleado_id: session.user.id,
         tipo_registro: tipoOriginal.toLowerCase(), 
-        fecha: fechaSoloEcuador,
+        fecha: fechaEcu,               // Crítico para que aparezca en el reporte de hoy
         geolocalizacion: coords,
         foto: fotoBase64,
-        fecha_hora: fechaHoraFinal
+        fecha_hora: fechaHoraFinal     // Evita el desfase visual en la base de datos
       }
 
       const { error: dbError } = await supabase.from('asistencia').insert([datos])
@@ -131,7 +130,7 @@ export default function DashboardPage() {
 
       setYaEntro(tipoOriginal === 'INGRESO')
       setStatus(`¡${tipoOriginal} EXITOSO!`)
-      alert(`${tipoOriginal} registrado correctamente a las ${horaEcuadorSucia.substring(11, 16)}.`)
+      alert(`${tipoOriginal} registrado correctamente a las ${horaEcu.substring(0, 5)}.`)
 
     } catch (err: any) {
       console.error(err)
