@@ -99,15 +99,19 @@ export default function DashboardPage() {
         }
       }
 
-      // --- LÓGICA DE HORA INVICTO PARA ECUADOR ---
+      // --- LÓGICA DE COMPENSACIÓN PARA SUPABASE (ECUADOR) ---
       const ahora = new Date();
-      const isoEcuador = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" }).replace(' ', 'T') + "-05:00";
-      const fechaEcuador = isoEcuador.split('T')[0];
+      // Obtenemos el texto de la hora actual en Ecuador (ej. 12:50:00)
+      const horaEcuadorSucia = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" }).replace(' ', 'T');
+      const fechaEcuador = horaEcuadorSucia.split('T')[0];
+
+      // TRUCO: Enviamos la hora local pero con etiqueta +00:00 para que la DB no la transforme
+      const fechaHoraCompensada = `${horaEcuadorSucia}+00:00`;
 
       const { error: dbError } = await supabase.from('asistencia').insert([{
         empleado_id: session.user.id,
         tipo_registro: tipo.toLowerCase(),
-        fecha_hora: isoEcuador, // Forzamos el envío del string con zona horaria
+        fecha_hora: fechaHoraCompensada, 
         fecha: fechaEcuador,
         geolocalizacion: coords,
         foto: fotoUrl
@@ -116,7 +120,7 @@ export default function DashboardPage() {
       if (dbError) throw dbError;
 
       setYaEntro(tipo === 'INGRESO');
-      alert(`${tipo} registrado con éxito a las ${isoEcuador.substring(11, 16)}`);
+      alert(`${tipo} registrado con éxito a las ${horaEcuadorSucia.substring(11, 16)}`);
       setStatus('Listo');
       
     } catch (err: any) {
