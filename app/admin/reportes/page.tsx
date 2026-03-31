@@ -68,7 +68,6 @@ export default function ReporteAdministrativo() {
     setFilasFiltradas(filtradas)
   }
 
-  // --- NUEVA FUNCIÓN WHATSAPP ---
   const enviarWhatsApp = () => {
     if (filasFiltradas.length === 0) return alert("No hay datos para enviar")
 
@@ -107,7 +106,8 @@ export default function ReporteAdministrativo() {
   }
 
   const exportarPDF = () => {
-    const doc = jsPDF()
+    // CORRECCIÓN AQUÍ: Se agregó 'new' antes de jsPDF()
+    const doc = new jsPDF()
     doc.text(`Reporte de ${tipoReporte}`, 14, 15)
     
     const body = filasFiltradas.map(r => {
@@ -126,7 +126,7 @@ export default function ReporteAdministrativo() {
   const abrirMapa = (coords: string) => {
     if (!coords) return
     const cleanCoords = coords.replace(/[()]/g, '')
-    window.open(`https://www.google.com/maps?q=${cleanCoords}`, '_blank')
+    window.open(`https://maps.google.com/?q=${cleanCoords}`, '_blank')
   }
 
   return (
