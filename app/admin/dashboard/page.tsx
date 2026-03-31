@@ -74,18 +74,13 @@ export default function DashboardPage() {
     }
   }
 
-  // FUNCIÓN ACTUALIZADA: Garantiza que el registro nocturno mantenga la fecha correcta
   const obtenerFechaHoraEcuador = () => {
     const ahora = new Date();
-    // Obtenemos la cadena YYYY-MM-DD HH:mm:ss específica de Ecuador
     const opciones = { timeZone: "America/Guayaquil", hour12: false };
     const fechaHoraSucia = ahora.toLocaleString("sv-SE", opciones);
     
-    // Construimos el formato ISO con el offset -05:00 explícito
-    // Esto evita que las marcas de las 10 PM se guarden como el día siguiente
+    // Formato ISO con offset -05:00 para asegurar fecha correcta en marcas nocturnas
     const fechaHoraEcuador = `${fechaHoraSucia.replace(' ', 'T')}-05:00`;
-    
-    // Extraemos solo la fecha YYYY-MM-DD para el campo fecha
     const fechaSolo = fechaHoraSucia.split(' ')[0];
     
     return { fechaHora: fechaHoraEcuador, fechaSolo };
@@ -185,4 +180,18 @@ export default function DashboardPage() {
             yaEntro 
             ? 'bg-rose-600 text-white shadow-rose-200' 
             : 'bg-blue-600 text-white shadow-blue-200'
-          } disabled:opacity-50 disabled
+          } disabled:opacity-50 disabled:grayscale`}
+        >
+          {loading ? 'Procesando...' : (yaEntro ? 'Marcar Salida' : 'Marcar Ingreso')}
+        </button>
+
+        <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 flex items-center gap-3">
+          <div className={`w-3 h-3 rounded-full animate-pulse ${gpsReady ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+          <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+            {gpsReady ? `Ubicación Capturada: ${coords}` : status}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
