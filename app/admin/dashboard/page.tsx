@@ -22,8 +22,21 @@ export default function DashboardPage() {
         router.replace('/login')
         return
       }
-      const estadoLocal = localStorage.getItem('asistencia_estado')
-      if (estadoLocal === 'INGRESO_REALIZADO') setYaEntro(true)
+      
+      // Consultar si ya marcó hoy en la base de datos (más seguro que localStorage)
+      const hoyEcuador = new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
+      const { data: registros } = await supabase
+        .from('asistencia')
+        .select('tipo_registro')
+        .eq('empleado_id', session.user.id)
+        .eq('fecha', hoyEcuador)
+        .order('fecha_hora', { ascending: false })
+        .limit(1);
+
+      if (registros && registros.length > 0 && registros[0].tipo_registro === 'ingreso') {
+        setYaEntro(true)
+      }
+
       setLoading(false)
       iniciarSensores()
     }
@@ -33,7 +46,6 @@ export default function DashboardPage() {
   const handleSignOut = async () => {
     if (!confirm("¿Cerrar sesión?")) return
     await supabase.auth.signOut()
-    localStorage.removeItem('asistencia_estado')
     router.replace('/login')
   }
 
@@ -72,104 +84,54 @@ export default function DashboardPage() {
     }
   }
 
-const capturarYEnviar = async (tipo: 'INGRESO' | 'SALIDA') => {
+  const capturarYEnviar = async (tipoOriginal: 'INGRESO' | 'SALIDA') => {
     setLoading(true)
-    setStatus(`Registrando ${tipo}...`)
+    setStatus(`Guardando ${tipoOriginal}...`)
 
     try {
+      const video = videoRef.current
+      const canvas = canvasRef.current
+      if (!video || !canvas) return
+
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      canvas.getContext('2d')?.drawImage(video, 0, 0)
+      const fotoBase64 = canvas.toDataURL('image/jpeg', 0.5)
+
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error("No hay sesión activa")
+      if (!session) throw new Error("Sesión expirada")
 
-      let fotoUrl = null
-      if (canvasRef.current && videoRef.current) {
-        const context = canvasRef.current.getContext('2d')
-        canvasRef.current.width = videoRef.current.videoWidth
-        canvasRef.current.height = videoRef.current.videoHeight
-        context?.drawImage(videoRef.current, 0, 0)
-        const blob = await new Promise<Blob | null>(res => canvasRef.current?.toBlob(res, 'image/jpeg', 0.7))
-        
-        if (blob) {
-          const fileName = `${session.user.id}/${Date.now()}.jpg`
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('fotos_asistencia')
-            .upload(fileName, blob)
-
-          if (uploadError) throw uploadError
-
-          const { data: publicUrl } = supabase.storage
-            .from('fotos_asistencia')
-            .getPublicUrl(fileName)
-          fotoUrl = publicUrl.publicUrl
-        }
-      }
-
-      // --- CAMBIO PARA LA HORA DE ECUADOR ---
+      // --- LÓGICA DE HORA PARA ECUADOR ---
       const ahora = new Date();
       
-      // Creamos la fecha formateada para Ecuador (ISO con -05:00)
-      // Esto le dice a Supabase exactamente qué hora es en Ecuador
-      const offset = -5; // Ecuador es UTC-5
-      const fechaEcuador = new Date(ahora.getTime() + (offset * 60 * 60 * 1000));
-      const isoEcuador = fechaEcuador.toISOString().replace('Z', '-05:00');
+      // 1. Obtener la fecha/hora local de Ecuador en formato ISO compatible (YYYY-MM-DDTHH:mm:ss)
+      const horaEcuadorSucia = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" }).replace(' ', 'T');
       
-      // Fecha simple YYYY-MM-DD para la columna 'fecha'
-      const hoyEcuador = ahora.toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
-
-      const { error: dbError } = await supabase.from('asistencia').insert([{
-        empleado_id: session.user.id,
-        tipo_registro: tipo.toLowerCase(),
-        fecha_hora: isoEcuador, // Envia ej: 2026-03-31T15:08:27-05:00
-        fecha: hoyEcuador,      // Envia ej: 2026-03-31
-        geolocalizacion: coords,
-        foto: fotoUrl
-      }]);
-
-      if (dbError) throw dbError;
-      // ---------------------------------------
-
-      setYaEntro(tipo === 'INGRESO');
-      alert(`${tipo} registrado con éxito`);
-      setStatus('Listo');
+      // 2. Agregar el offset de Ecuador (-05:00) para que Postgres no lo mueva a UTC
+      const fechaHoraFinal = `${horaEcuadorSucia}-05:00`;
       
-    } catch (err: any) {
-      console.error(err);
-      alert(`Error: ${err.message}`);
-      setStatus('Error');
-    } finally {
-      setLoading(false)
-    }
-  }
-
-      // CORRECCIÓN CLAVE: Convertir a minúsculas para cumplir con la Check Constraint de la DB
-      const tipoParaDB = tipoOriginal.toLowerCase()
+      // 3. Fecha simple para la columna de filtrado
+      const fechaSoloEcuador = horaEcuadorSucia.split('T')[0];
 
       const datos = {
         empleado_id: session.user.id,
-        tipo_registro: tipoParaDB, 
-        fecha: new Date().toISOString().split('T')[0],
+        tipo_registro: tipoOriginal.toLowerCase(), 
+        fecha: fechaSoloEcuador,
         geolocalizacion: coords,
         foto: fotoBase64,
-        fecha_hora: new Date().toISOString()
+        fecha_hora: fechaHoraFinal
       }
 
       const { error: dbError } = await supabase.from('asistencia').insert([datos])
 
       if (dbError) {
         console.error("Error Supabase:", dbError)
-        alert(`ERROR AL GUARDAR: ${dbError.message}`)
         throw dbError
       }
 
-      if (tipoOriginal === 'INGRESO') {
-        localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
-        setYaEntro(true)
-      } else {
-        localStorage.removeItem('asistencia_estado')
-        setYaEntro(false)
-      }
-
+      setYaEntro(tipoOriginal === 'INGRESO')
       setStatus(`¡${tipoOriginal} EXITOSO!`)
-      alert(`${tipoOriginal} registrado correctamente.`)
+      alert(`${tipoOriginal} registrado correctamente a las ${horaEcuadorSucia.substring(11, 16)}.`)
 
     } catch (err: any) {
       console.error(err)
