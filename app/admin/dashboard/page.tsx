@@ -22,19 +22,17 @@ export default function DashboardPage() {
         return
       }
 
-      // SOLUCIÓN AL ERROR DE ESTADO: Consultamos a la DB el último registro de hoy
-      const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
+      const hoyEcuador = new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
       
       const { data: registros } = await supabase
         .from('asistencia')
         .select('tipo_registro')
         .eq('empleado_id', session.user.id)
-        .eq('fecha', hoy)
+        .eq('fecha', hoyEcuador)
         .order('fecha_hora', { ascending: false })
         .limit(1);
 
       if (registros && registros.length > 0) {
-        // Si el último registro fue 'ingreso', el botón debe decir 'SALIDA'
         if (registros[0].tipo_registro === 'ingreso') {
           setYaEntro(true);
         }
@@ -55,19 +53,15 @@ export default function DashboardPage() {
   const iniciarSensores = async () => {
     setGpsReady(false)
     setStatus('Obteniendo GPS...')
-    
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          setCoords(`(${pos.coords.latitude}, ${pos.coords.longitude})`)
-          setGpsReady(true)
-          setStatus('GPS Listo')
-          iniciarCamara()
+          setCoords(`(${pos.coords.latitude}, ${pos.coords.longitude})`);
+          setGpsReady(true);
+          setStatus('GPS Listo');
+          iniciarCamara();
         },
-        (err) => {
-          setStatus('Error GPS: Activa la ubicación')
-          console.error(err)
-        },
+        (err) => { setStatus('Error GPS'); console.error(err); },
         { enableHighAccuracy: true, timeout: 10000 }
       )
     }
@@ -75,26 +69,9 @@ export default function DashboardPage() {
 
   const iniciarCamara = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user' }, 
-        audio: false 
-      })
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-      }
-    } catch (err) {
-      setStatus('Error de Cámara')
-    }
-  }
-
-  // FUNCIÓN PARA HORA DE ECUADOR: Asegura el offset -05:00
-  const obtenerFechaHoraEcuador = () => {
-    const ahora = new Date();
-    const fechaHoraSucia = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil", hour12: false });
-    const fechaHoraEcuador = `${fechaHoraSucia.replace(' ', 'T')}-05:00`;
-    const fechaSolo = fechaHoraSucia.split(' ')[0];
-    
-    return { fechaHora: fechaHoraEcuador, fechaSolo };
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+      if (videoRef.current) videoRef.current.srcObject = stream;
+    } catch (err) { setStatus('Error de Cámara'); }
   }
 
   const capturarYEnviar = async (tipo: 'INGRESO' | 'SALIDA') => {
@@ -111,57 +88,53 @@ export default function DashboardPage() {
         canvasRef.current.width = videoRef.current.videoWidth
         canvasRef.current.height = videoRef.current.videoHeight
         context?.drawImage(videoRef.current, 0, 0)
-        
         const blob = await new Promise<Blob | null>(res => canvasRef.current?.toBlob(res, 'image/jpeg', 0.7))
         if (blob) {
           const fileName = `${session.user.id}/${Date.now()}.jpg`
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('fotos_asistencia')
-            .upload(fileName, blob)
-          
-          if (uploadError) throw uploadError
-          const { data: publicUrl } = supabase.storage.from('fotos_asistencia').getPublicUrl(fileName)
-          fotoUrl = publicUrl.publicUrl
+          const { data: uploadData } = await supabase.storage.from('fotos_asistencia').upload(fileName, blob)
+          if (uploadData) {
+            const { data: publicUrl } = supabase.storage.from('fotos_asistencia').getPublicUrl(fileName)
+            fotoUrl = publicUrl.publicUrl
+          }
         }
       }
 
-      const { fechaHora, fechaSolo } = obtenerFechaHoraEcuador();
+      // --- LÓGICA DE HORA INVICTO PARA ECUADOR ---
+      const ahora = new Date();
+      const isoEcuador = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" }).replace(' ', 'T') + "-05:00";
+      const fechaEcuador = isoEcuador.split('T')[0];
 
       const { error: dbError } = await supabase.from('asistencia').insert([{
         empleado_id: session.user.id,
         tipo_registro: tipo.toLowerCase(),
-        fecha_hora: fechaHora, 
-        fecha: fechaSolo,
+        fecha_hora: isoEcuador, // Forzamos el envío del string con zona horaria
+        fecha: fechaEcuador,
         geolocalizacion: coords,
         foto: fotoUrl
-      }])
+      }]);
 
-      if (dbError) throw dbError
+      if (dbError) throw dbError;
 
-      // Actualizamos el estado visual inmediatamente
       setYaEntro(tipo === 'INGRESO');
-
-      alert(`${tipo} registrado con éxito`)
-      setStatus('Listo')
+      alert(`${tipo} registrado con éxito a las ${isoEcuador.substring(11, 16)}`);
+      setStatus('Listo');
       
     } catch (err: any) {
-      alert(`Error: ${err.message}`)
-      setStatus('Error al registrar')
+      alert(`Error: ${err.message}`);
+      setStatus('Error al registrar');
     } finally {
       setLoading(false)
     }
   }
 
   if (loading && status === 'Iniciando...') {
-    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic uppercase">Cargando...</div>
+    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic">CARGANDO...</div>
   }
 
   return (
     <div className="min-h-screen bg-white flex flex-col items-center p-6 pb-24">
       <div className="w-full flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-black italic uppercase tracking-tighter text-slate-900">
-          PRO<span className="text-blue-600">ACEITES</span>
-        </h1>
+        <h1 className="text-2xl font-black italic uppercase text-slate-900">PRO<span className="text-blue-600">ACEITES</span></h1>
         <button onClick={handleSignOut} className="p-2 bg-slate-100 rounded-full text-slate-400">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         </button>
@@ -171,9 +144,7 @@ export default function DashboardPage() {
         <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
         <canvas ref={canvasRef} className="hidden" />
         {!gpsReady && (
-          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center p-8 text-center text-white">
-            <p className="text-xs font-bold text-amber-400 uppercase">{status}</p>
-          </div>
+          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center p-8 text-center text-white text-xs font-bold uppercase">{status}</div>
         )}
       </div>
 
@@ -190,7 +161,7 @@ export default function DashboardPage() {
 
         <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 flex items-center gap-3 text-[10px] font-black uppercase text-slate-400">
           <div className={`w-3 h-3 rounded-full ${gpsReady ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
-          {gpsReady ? `Ubicación: ${coords}` : status}
+          {gpsReady ? `GPS: ${coords}` : status}
         </div>
       </div>
     </div>
