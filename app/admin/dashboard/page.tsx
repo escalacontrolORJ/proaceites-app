@@ -87,9 +87,9 @@ export default function DashboardPage() {
     }
   }
 
+  // FUNCIÓN PARA HORA DE ECUADOR: Asegura el offset -05:00
   const obtenerFechaHoraEcuador = () => {
     const ahora = new Date();
-    // Formateamos estrictamente a la zona de Ecuador
     const fechaHoraSucia = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil", hour12: false });
     const fechaHoraEcuador = `${fechaHoraSucia.replace(' ', 'T')}-05:00`;
     const fechaSolo = fechaHoraSucia.split(' ')[0];
