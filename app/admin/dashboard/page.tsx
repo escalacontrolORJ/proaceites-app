@@ -22,6 +22,7 @@ export default function DashboardPage() {
         return
       }
 
+      // Consultamos usando la fecha local de Ecuador
       const hoyEcuador = new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
       
       const { data: registros } = await supabase
@@ -99,23 +100,23 @@ export default function DashboardPage() {
         }
       }
 
-      // --- SOLUCIÓN DE COMPENSACIÓN MATEMÁTICA ---
+      // --- COMPENSACIÓN MATEMÁTICA PARA ECUADOR (-5h) ---
       const ahora = new Date();
       
-      // 1. Obtenemos la hora real de Ecuador
+      // 1. Obtenemos la hora real de Ecuador para el mensaje y la columna 'fecha'
       const horaEcuadorString = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" });
       const fechaSolo = horaEcuadorString.split(' ')[0];
       
-      // 2. "Engañamos" a Supabase: 
-      // Le restamos 5 horas a la hora actual de Ecuador para que, al sumarle Supabase las 5 horas de UTC,
-      // el resultado final guardado sea exactamente la hora de Ecuador.
+      // 2. Restamos 5 horas a la estampa de tiempo actual.
+      // Al enviarlo así, cuando Supabase le sume las 5 horas para llegar a UTC,
+      // el valor que quedará guardado será exactamente la hora de Ecuador.
       const compensada = new Date(ahora.getTime() - (5 * 60 * 60 * 1000));
       const isoCompensada = compensada.toISOString(); 
 
       const { error: dbError } = await supabase.from('asistencia').insert([{
         empleado_id: session.user.id,
         tipo_registro: tipo.toLowerCase(),
-        fecha_hora: isoCompensada, // Enviamos la hora restada
+        fecha_hora: isoCompensada, 
         fecha: fechaSolo,
         geolocalizacion: coords,
         foto: fotoUrl
