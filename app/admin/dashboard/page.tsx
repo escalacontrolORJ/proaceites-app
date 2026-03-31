@@ -74,14 +74,21 @@ export default function DashboardPage() {
     }
   }
 
-  // FUNCIÓN CLAVE: Genera la hora exacta de Ecuador (UTC-5)
+  // FUNCIÓN CORREGIDA: Genera la hora de Ecuador con offset -05:00 explícito
   const obtenerFechaHoraEcuador = () => {
     const ahora = new Date();
-    // Usamos el locale 'sv-SE' porque devuelve YYYY-MM-DD HH:mm:ss que es ideal para DB
-    const fechaHora = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" });
+    
+    // 1. Obtenemos la fecha y hora en formato YYYY-MM-DD HH:mm:ss
+    const fechaHoraSucia = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" });
+    
+    // 2. Formateamos para que Supabase no lo confunda con UTC (agregamos T y -05:00)
+    // Resultado final: "2026-03-31T12:15:00-05:00"
+    const fechaHoraEcuador = `${fechaHoraSucia.replace(' ', 'T')}-05:00`;
+    
+    // 3. Fecha para el campo de búsqueda rápida
     const fechaSolo = ahora.toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
     
-    return { fechaHora, fechaSolo };
+    return { fechaHora: fechaHoraEcuador, fechaSolo };
   }
 
   const capturarYEnviar = async (tipo: 'INGRESO' | 'SALIDA') => {
@@ -89,11 +96,9 @@ export default function DashboardPage() {
     setStatus(`Registrando ${tipo}...`)
 
     try {
-      // 1. Obtener sesión de usuario
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error("No hay sesión activa")
 
-      // 2. Capturar foto
       let fotoUrl = null
       if (canvasRef.current && videoRef.current) {
         const context = canvasRef.current.getContext('2d')
@@ -114,22 +119,20 @@ export default function DashboardPage() {
         }
       }
 
-      // 3. OBTENER TIEMPO DE ECUADOR
+      // OBTENEMOS TIEMPO CON OFFSET -05:00
       const { fechaHora, fechaSolo } = obtenerFechaHoraEcuador();
 
-      // 4. Guardar en Base de Datos
       const { error: dbError } = await supabase.from('asistencia').insert([{
         empleado_id: session.user.id,
         tipo_registro: tipo.toLowerCase(),
-        fecha_hora: fechaHora, // Ahora guarda la hora de Ecuador corregida
-        fecha: fechaSolo,      // Fecha del día en Ecuador
+        fecha_hora: fechaHora, 
+        fecha: fechaSolo,
         geolocalizacion: coords,
         foto: fotoUrl
       }])
 
       if (dbError) throw dbError
 
-      // 5. Actualizar estado local
       if (tipo === 'INGRESO') {
         localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
         setYaEntro(true)
