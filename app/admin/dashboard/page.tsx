@@ -22,7 +22,6 @@ export default function DashboardPage() {
         return
       }
 
-      // Consultamos el estado usando la fecha local de Ecuador para persistencia
       const hoyEcuador = new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
       
       const { data: registros } = await supabase
@@ -100,21 +99,24 @@ export default function DashboardPage() {
         }
       }
 
-      // --- ESTRATEGIA DE HORA LOCAL FORZADA ---
+      // --- SOLUCIÓN DE COMPENSACIÓN MATEMÁTICA ---
       const ahora = new Date();
       
-      // Creamos la fecha local: "2026-03-31 13:10:00"
-      const horaLocal = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" });
-      const fechaEcuador = horaLocal.split(' ')[0];
-
-      // Formateamos exactamente como lo espera Postgres para timestamptz (ISO8601 con Offset)
-      const fechaHoraParaDB = horaLocal.replace(' ', 'T') + "-05:00";
+      // 1. Obtenemos la hora real de Ecuador
+      const horaEcuadorString = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" });
+      const fechaSolo = horaEcuadorString.split(' ')[0];
+      
+      // 2. "Engañamos" a Supabase: 
+      // Le restamos 5 horas a la hora actual de Ecuador para que, al sumarle Supabase las 5 horas de UTC,
+      // el resultado final guardado sea exactamente la hora de Ecuador.
+      const compensada = new Date(ahora.getTime() - (5 * 60 * 60 * 1000));
+      const isoCompensada = compensada.toISOString(); 
 
       const { error: dbError } = await supabase.from('asistencia').insert([{
         empleado_id: session.user.id,
         tipo_registro: tipo.toLowerCase(),
-        fecha_hora: fechaHoraParaDB, 
-        fecha: fechaEcuador,
+        fecha_hora: isoCompensada, // Enviamos la hora restada
+        fecha: fechaSolo,
         geolocalizacion: coords,
         foto: fotoUrl
       }]);
@@ -122,7 +124,7 @@ export default function DashboardPage() {
       if (dbError) throw dbError;
 
       setYaEntro(tipo === 'INGRESO');
-      alert(`${tipo} registrado con éxito a las ${horaLocal.substring(11, 16)}`);
+      alert(`${tipo} registrado con éxito a las ${horaEcuadorString.substring(11, 16)}`);
       setStatus('Listo');
       
     } catch (err: any) {
