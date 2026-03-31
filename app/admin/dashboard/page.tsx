@@ -22,7 +22,7 @@ export default function DashboardPage() {
         return
       }
 
-      // Usamos la fecha local de Ecuador para verificar si ya marcó hoy
+      // Consultamos usando la fecha local de Ecuador
       const hoyEcuador = new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
       
       const { data: registros } = await supabase
@@ -100,18 +100,18 @@ export default function DashboardPage() {
         }
       }
 
-      // --- SOLUCIÓN TÉCNICA: COMPENSACIÓN DE OFFSET ---
+      // --- LÓGICA DE COMPENSACIÓN MATEMÁTICA PARA ECUADOR ---
       const ahora = new Date();
       
-      // 1. Obtenemos la hora real de Ecuador para el mensaje y la columna 'fecha'
-      const horaEcuadorString = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" });
-      const fechaSolo = horaEcuadorString.split(' ')[0];
+      // 1. Hora real de Ecuador para el mensaje y la columna de texto 'fecha'
+      const horaEcuadorTexto = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" });
+      const fechaSolo = horaEcuadorTexto.split(' ')[0];
       
-      // 2. Restamos 5 horas (18,000,000 milisegundos) a la hora actual.
-      // Enviamos este valor restado para que cuando la DB lo convierta a UTC (+5h),
-      // el valor final coincida con la hora de Ecuador.
-      const compensada = new Date(ahora.getTime() - (5 * 60 * 60 * 1000));
-      const isoCompensada = compensada.toISOString(); 
+      // 2. Restamos 5 horas manualmente al objeto Date antes de enviarlo.
+      // Esto hace que si son las 13:00 en Ecuador, enviamos las 08:00 UTC.
+      // Supabase guardará las 13:00 (08:00 + 5h de desfase).
+      const fechaCompensada = new Date(ahora.getTime() - (5 * 60 * 60 * 1000));
+      const isoCompensada = fechaCompensada.toISOString();
 
       const { error: dbError } = await supabase.from('asistencia').insert([{
         empleado_id: session.user.id,
@@ -125,7 +125,7 @@ export default function DashboardPage() {
       if (dbError) throw dbError;
 
       setYaEntro(tipo === 'INGRESO');
-      alert(`${tipo} registrado con éxito a las ${horaEcuadorString.substring(11, 16)}`);
+      alert(`${tipo} registrado con éxito a las ${horaEcuadorTexto.substring(11, 16)}`);
       setStatus('Listo');
       
     } catch (err: any) {
@@ -137,7 +137,7 @@ export default function DashboardPage() {
   }
 
   if (loading && status === 'Iniciando...') {
-    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic uppercase">CARGANDO...</div>
+    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic uppercase text-center p-10">Cargando Sensores...</div>
   }
 
   return (
