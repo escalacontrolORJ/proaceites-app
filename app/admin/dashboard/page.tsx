@@ -22,6 +22,7 @@ export default function DashboardPage() {
         return
       }
 
+      // Consultamos el estado usando la fecha local de Ecuador para persistencia
       const hoyEcuador = new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
       
       const { data: registros } = await supabase
@@ -99,15 +100,14 @@ export default function DashboardPage() {
         }
       }
 
-      // --- NUEVA ESTRATEGIA: FORMATO ISO8601 PURO ---
+      // --- ESTRATEGIA DE HORA LOCAL FORZADA ---
       const ahora = new Date();
       
       // Creamos la fecha local: "2026-03-31 13:10:00"
       const horaLocal = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" });
       const fechaEcuador = horaLocal.split(' ')[0];
 
-      // Formateamos exactamente como lo espera Postgres para timestamptz
-      // Ejemplo: "2026-03-31T13:10:00-05:00"
+      // Formateamos exactamente como lo espera Postgres para timestamptz (ISO8601 con Offset)
       const fechaHoraParaDB = horaLocal.replace(' ', 'T') + "-05:00";
 
       const { error: dbError } = await supabase.from('asistencia').insert([{
@@ -122,7 +122,7 @@ export default function DashboardPage() {
       if (dbError) throw dbError;
 
       setYaEntro(tipo === 'INGRESO');
-      alert(`${tipo} registrado con éxito a las ${horaEcuadorSucia.substring(11, 16)}`);
+      alert(`${tipo} registrado con éxito a las ${horaLocal.substring(11, 16)}`);
       setStatus('Listo');
       
     } catch (err: any) {
@@ -134,7 +134,7 @@ export default function DashboardPage() {
   }
 
   if (loading && status === 'Iniciando...') {
-    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic">CARGANDO...</div>
+    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic uppercase">CARGANDO...</div>
   }
 
   return (
