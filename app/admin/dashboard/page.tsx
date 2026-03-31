@@ -22,7 +22,6 @@ export default function DashboardPage() {
         return
       }
 
-      // Consultamos el estado usando la fecha local de Ecuador
       const hoyEcuador = new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
       
       const { data: registros } = await supabase
@@ -100,22 +99,22 @@ export default function DashboardPage() {
         }
       }
 
-      // --- LÓGICA DE FECHA Y HORA MANUAL (VENCE AL VALOR POR DEFECTO UTC) ---
+      // --- NUEVA ESTRATEGIA: FORMATO ISO8601 PURO ---
       const ahora = new Date();
       
-      // 1. Generamos la estampa de tiempo local de Ecuador (Formato ISO con -05:00)
-      const opciones = { timeZone: "America/Guayaquil", hour12: false };
-      const horaEcuadorSucia = ahora.toLocaleString("sv-SE", opciones).replace(' ', 'T');
-      const fechaHoraISO = `${horaEcuadorSucia}-05:00`;
-      
-      // 2. Extraemos la fecha limpia para la columna 'fecha'
-      const fechaSoloEcuador = horaEcuadorSucia.split('T')[0];
+      // Creamos la fecha local: "2026-03-31 13:10:00"
+      const horaLocal = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" });
+      const fechaEcuador = horaLocal.split(' ')[0];
+
+      // Formateamos exactamente como lo espera Postgres para timestamptz
+      // Ejemplo: "2026-03-31T13:10:00-05:00"
+      const fechaHoraParaDB = horaLocal.replace(' ', 'T') + "-05:00";
 
       const { error: dbError } = await supabase.from('asistencia').insert([{
         empleado_id: session.user.id,
         tipo_registro: tipo.toLowerCase(),
-        fecha_hora: fechaHoraISO, // Forzamos la hora de Ecuador
-        fecha: fechaSoloEcuador,  // Forzamos la fecha de Ecuador
+        fecha_hora: fechaHoraParaDB, 
+        fecha: fechaEcuador,
         geolocalizacion: coords,
         foto: fotoUrl
       }]);
@@ -135,7 +134,7 @@ export default function DashboardPage() {
   }
 
   if (loading && status === 'Iniciando...') {
-    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic uppercase">Cargando...</div>
+    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic">CARGANDO...</div>
   }
 
   return (
