@@ -22,7 +22,6 @@ export default function DashboardPage() {
         return
       }
 
-      // Consultamos usando la fecha local de Ecuador
       const hoyEcuador = new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
       
       const { data: registros } = await supabase
@@ -100,23 +99,20 @@ export default function DashboardPage() {
         }
       }
 
-      // --- LÓGICA DE COMPENSACIÓN MATEMÁTICA PARA ECUADOR ---
+      // --- EL CAMBIO DEFINITIVO: ENVÍO DE TEXTO PURO ---
       const ahora = new Date();
       
-      // 1. Hora real de Ecuador para el mensaje y la columna de texto 'fecha'
-      const horaEcuadorTexto = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" });
-      const fechaSolo = horaEcuadorTexto.split(' ')[0];
-      
-      // 2. Restamos 5 horas manualmente al objeto Date antes de enviarlo.
-      // Esto hace que si son las 13:00 en Ecuador, enviamos las 08:00 UTC.
-      // Supabase guardará las 13:00 (08:00 + 5h de desfase).
-      const fechaCompensada = new Date(ahora.getTime() - (5 * 60 * 60 * 1000));
-      const isoCompensada = fechaCompensada.toISOString();
+      // 1. Obtenemos la hora real de Ecuador en formato YYYY-MM-DD HH:mm:ss
+      // Usamos 'sv-SE' porque genera un formato limpio compatible con SQL
+      const horaEcuadorString = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" });
+      const fechaSolo = horaEcuadorString.split(' ')[0];
 
+      // 2. Insertamos la cadena de texto DIRECTAMENTE. 
+      // Al no llevar la "Z" de UTC ni el offset, Supabase lo guarda tal cual.
       const { error: dbError } = await supabase.from('asistencia').insert([{
         empleado_id: session.user.id,
         tipo_registro: tipo.toLowerCase(),
-        fecha_hora: isoCompensada, 
+        fecha_hora: horaEcuadorString, // Ejemplo: "2026-03-31 13:09:44"
         fecha: fechaSolo,
         geolocalizacion: coords,
         foto: fotoUrl
@@ -125,7 +121,7 @@ export default function DashboardPage() {
       if (dbError) throw dbError;
 
       setYaEntro(tipo === 'INGRESO');
-      alert(`${tipo} registrado con éxito a las ${horaEcuadorTexto.substring(11, 16)}`);
+      alert(`${tipo} registrado con éxito a las ${horaEcuadorString.substring(11, 16)}`);
       setStatus('Listo');
       
     } catch (err: any) {
@@ -136,8 +132,9 @@ export default function DashboardPage() {
     }
   }
 
+  // ... (Resto del componente visual se mantiene igual)
   if (loading && status === 'Iniciando...') {
-    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic uppercase text-center p-10">Cargando Sensores...</div>
+    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic uppercase">CARGANDO...</div>
   }
 
   return (
