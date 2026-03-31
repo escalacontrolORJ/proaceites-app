@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation'
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [gpsReady, setGpsReady] = useState(false)
-  const [cameraReady, setCameraReady] = useState(false)
   const [coords, setCoords] = useState('')
   const [yaEntro, setYaEntro] = useState(false)
   const [status, setStatus] = useState('Iniciando...')
@@ -16,24 +15,40 @@ export default function DashboardPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const protegerRuta = async () => {
+    const inicializarDatos = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         router.replace('/login')
         return
       }
-      const estadoLocal = localStorage.getItem('asistencia_estado')
-      if (estadoLocal === 'INGRESO_REALIZADO') setYaEntro(true)
+
+      // SOLUCIÓN AL ERROR DE ESTADO: Consultamos a la DB el último registro de hoy
+      const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
+      
+      const { data: registros } = await supabase
+        .from('asistencia')
+        .select('tipo_registro')
+        .eq('empleado_id', session.user.id)
+        .eq('fecha', hoy)
+        .order('fecha_hora', { ascending: false })
+        .limit(1);
+
+      if (registros && registros.length > 0) {
+        // Si el último registro fue 'ingreso', el botón debe decir 'SALIDA'
+        if (registros[0].tipo_registro === 'ingreso') {
+          setYaEntro(true);
+        }
+      }
+
       setLoading(false)
       iniciarSensores()
     }
-    protegerRuta()
+    inicializarDatos()
   }, [router])
 
   const handleSignOut = async () => {
     if (!confirm("¿Cerrar sesión?")) return
     await supabase.auth.signOut()
-    localStorage.removeItem('asistencia_estado')
     router.replace('/login')
   }
 
@@ -66,20 +81,16 @@ export default function DashboardPage() {
       })
       if (videoRef.current) {
         videoRef.current.srcObject = stream
-        setCameraReady(true)
       }
     } catch (err) {
       setStatus('Error de Cámara')
-      console.error(err)
     }
   }
 
   const obtenerFechaHoraEcuador = () => {
     const ahora = new Date();
-    const opciones = { timeZone: "America/Guayaquil", hour12: false };
-    const fechaHoraSucia = ahora.toLocaleString("sv-SE", opciones);
-    
-    // Formato ISO con offset -05:00 para asegurar fecha correcta en marcas nocturnas
+    // Formateamos estrictamente a la zona de Ecuador
+    const fechaHoraSucia = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil", hour12: false });
     const fechaHoraEcuador = `${fechaHoraSucia.replace(' ', 'T')}-05:00`;
     const fechaSolo = fechaHoraSucia.split(' ')[0];
     
@@ -127,13 +138,8 @@ export default function DashboardPage() {
 
       if (dbError) throw dbError
 
-      if (tipo === 'INGRESO') {
-        localStorage.setItem('asistencia_estado', 'INGRESO_REALIZADO')
-        setYaEntro(true)
-      } else {
-        localStorage.removeItem('asistencia_estado')
-        setYaEntro(false)
-      }
+      // Actualizamos el estado visual inmediatamente
+      setYaEntro(tipo === 'INGRESO');
 
       alert(`${tipo} registrado con éxito`)
       setStatus('Listo')
@@ -147,7 +153,7 @@ export default function DashboardPage() {
   }
 
   if (loading && status === 'Iniciando...') {
-    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic uppercase">Cargando Sistema...</div>
+    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic uppercase">Cargando...</div>
   }
 
   return (
@@ -164,10 +170,9 @@ export default function DashboardPage() {
       <div className="relative w-full max-w-sm aspect-[3/4] bg-black rounded-[40px] overflow-hidden border-2 border-slate-800 shadow-2xl mb-8">
         <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
         <canvas ref={canvasRef} className="hidden" />
-        
         {!gpsReady && (
-          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center p-8 text-center">
-            <p className="text-xs font-bold text-amber-400 uppercase mb-4">{status}</p>
+          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center p-8 text-center text-white">
+            <p className="text-xs font-bold text-amber-400 uppercase">{status}</p>
           </div>
         )}
       </div>
@@ -176,20 +181,16 @@ export default function DashboardPage() {
         <button 
           onClick={() => capturarYEnviar(yaEntro ? 'SALIDA' : 'INGRESO')} 
           disabled={!gpsReady || loading} 
-          className={`w-full p-8 rounded-[30px] font-black text-xl uppercase tracking-widest shadow-2xl active:scale-95 transition-all ${
-            yaEntro 
-            ? 'bg-rose-600 text-white shadow-rose-200' 
-            : 'bg-blue-600 text-white shadow-blue-200'
-          } disabled:opacity-50 disabled:grayscale`}
+          className={`w-full p-8 rounded-[30px] font-black text-xl uppercase tracking-widest shadow-2xl transition-all ${
+            yaEntro ? 'bg-rose-600 text-white shadow-rose-200' : 'bg-blue-600 text-white shadow-blue-200'
+          } disabled:opacity-50`}
         >
-          {loading ? 'Procesando...' : (yaEntro ? 'Marcar Salida' : 'Marcar Ingreso')}
+          {loading ? 'Cargando...' : (yaEntro ? 'Marcar Salida' : 'Marcar Ingreso')}
         </button>
 
-        <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 flex items-center gap-3">
-          <div className={`w-3 h-3 rounded-full animate-pulse ${gpsReady ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
-          <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
-            {gpsReady ? `Ubicación Capturada: ${coords}` : status}
-          </p>
+        <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 flex items-center gap-3 text-[10px] font-black uppercase text-slate-400">
+          <div className={`w-3 h-3 rounded-full ${gpsReady ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+          {gpsReady ? `Ubicación: ${coords}` : status}
         </div>
       </div>
     </div>
