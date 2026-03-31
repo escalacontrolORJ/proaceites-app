@@ -29,257 +29,208 @@ export default function ReporteAdministrativo() {
   async function fetchData() {
     setLoading(true)
     try {
-      const { data: emps } = await supabase.from('empleados').select('id, nombres')
-      const { data: clis } = await supabase.from('clientes').select('id, nombre_local, nombre_fiscal')
+      const { data: emps } = await supabase.from('perfiles').select('*')
+      const { data: clis } = await supabase.from('clientes').select('*')
       setEmpleados(emps || [])
       setClientes(clis || [])
-      
-      const nombresMap = (emps || []).reduce((acc: any, cur: any) => ({ ...acc, [cur.id]: cur.nombres }), {})
 
-      if (tipoReporte === 'asistencia') {
-        const { data: asistencia, error } = await supabase
-          .from('asistencia')
-          .select('empleado_id, fecha, fecha_hora, tipo_registro, foto, geolocalizacion')
-          .gte('fecha', fechaDesde)
-          .lte('fecha', fechaHasta)
-          .order('fecha_hora', { ascending: true })
+      let query = supabase.from(tipoReporte === 'asistencia' ? 'vista_asistencia_detallada' : 'vista_gestion_visitas_detallada')
+        .select('*')
+        .gte('fecha', fechaDesde)
+        .lte('fecha', fechaHasta)
 
-        if (error) throw error
-        const agrupados: any = {}
-        asistencia?.forEach(reg => {
-          const key = `${reg.empleado_id}_${reg.fecha}`
-          if (!agrupados[key]) {
-            agrupados[key] = { 
-              empleado_id: reg.empleado_id,
-              nombre: nombresMap[reg.empleado_id] || 'Usuario', 
-              fecha: reg.fecha, 
-              entrada: null, 
-              salida: null, 
-              horas: '0.00' 
-            }
-          }
-          const d = new Date(reg.fecha_hora); d.setHours(d.getHours() - 5)
-          const horaStr = d.getUTCHours().toString().padStart(2, '0') + ':' + d.getUTCMinutes().toString().padStart(2, '0')
-          const datosEvento = { hora: horaStr, foto: reg.foto, gps: reg.geolocalizacion, raw_time: d.getTime() }
-          if (reg.tipo_registro?.toUpperCase() === 'INGRESO') agrupados[key].entrada = datosEvento
-          else if (reg.tipo_registro?.toUpperCase() === 'SALIDA') agrupados[key].salida = datosEvento
-          if (agrupados[key].entrada && agrupados[key].salida) {
-            const diffMs = agrupados[key].salida.raw_time - agrupados[key].entrada.raw_time
-            agrupados[key].horas = (diffMs / 3600000).toFixed(2)
-          }
-        })
-        setFilas(Object.values(agrupados).reverse())
-      } else {
-        const columnaFecha = tipoReporte === 'visitas' ? 'fecha' : 'proxima_visita'
-        const { data: visitas, error } = await supabase
-          .from('visitas')
-          .select('*, clientes(nombre_local, nombre_fiscal)')
-          .gte(columnaFecha, fechaDesde)
-          .lte(columnaFecha, fechaHasta)
-          .order(columnaFecha, { ascending: false })
-
-        if (error) throw error
-        setFilas((visitas || []).map(v => ({
-          ...v,
-          nombre_vendedor: nombresMap[v.vendedor_id] || nombresMap[v.empleado_id] || 'S/N',
-          nombre_cliente: v.clientes?.nombre_local || v.clientes?.nombre_fiscal || 'S/N'
-        })))
+      if (tipoReporte === 'proximas') {
+        query = supabase.from('vista_gestion_visitas_detallada')
+          .select('*')
+          .not('proxima_visita', 'is', null)
+          .gte('proxima_visita', fechaDesde)
+          .lte('proxima_visita', fechaHasta)
       }
-    } catch (err) { console.error(err) } finally { setLoading(false) }
+
+      const { data, error } = await query
+      if (error) throw error
+      setFilas(data || [])
+    } catch (error) {
+      console.error('Error:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   function aplicarFiltros() {
-    let temp = [...filas]
+    let filtradas = [...filas]
     if (filtroEmpleado) {
-      temp = temp.filter(f => (f.empleado_id === filtroEmpleado || f.vendedor_id === filtroEmpleado))
+      filtradas = filtradas.filter(f => f.empleado_id === filtroEmpleado)
     }
     if (filtroCliente && tipoReporte !== 'asistencia') {
-      temp = temp.filter(f => f.cliente_id === filtroCliente)
+      filtradas = filtradas.filter(f => f.cliente_id === filtroCliente)
     }
-    setFilasFiltradas(temp)
+    setFilasFiltradas(filtradas)
   }
 
-  const exportarExcel = () => {
-    let csvContent = "data:text/csv;charset=utf-8,";
+  // --- NUEVA FUNCIÓN WHATSAPP ---
+  const enviarWhatsApp = () => {
+    if (filasFiltradas.length === 0) return alert("No hay datos para enviar")
+
+    let mensaje = `*RESUMEN DE REPORTE: ${tipoReporte.toUpperCase()}*\n`
+    mensaje += `📅 Periodo: ${fechaDesde} al ${fechaHasta}\n`
+    mensaje += `----------------------------------\n\n`
+
     if (tipoReporte === 'asistencia') {
-      csvContent += "Empleado,Fecha,Entrada,Salida,Horas\n";
-      filasFiltradas.forEach(r => csvContent += `${r.nombre},${r.fecha},${r.entrada?.hora || ''},${r.salida?.hora || ''},${r.horas}\n`);
-    } else {
-      const header = tipoReporte === 'visitas' ? "Vendedor,Cliente,Motivo,Valor,Observaciones\n" : "Vendedor,Cliente,Motivo,Observaciones,ProxVisita\n";
-      csvContent += header;
       filasFiltradas.forEach(r => {
-        if (tipoReporte === 'visitas') {
-          csvContent += `${r.nombre_vendedor},${r.nombre_cliente},${r.motivo},${r.valor_transaccion},${r.observaciones}\n`;
-        } else {
-          csvContent += `${r.nombre_vendedor},${r.nombre_cliente},${r.motivo},${r.observaciones},${r.proxima_visita}\n`;
-        }
-      });
+        mensaje += `👤 *${r.nombre_empleado}*\n`
+        mensaje += `➡ Ent: ${r.hora_ingreso || '--'}\n`
+        mensaje += `⬅ Sal: ${r.hora_salida || '--'}\n\n`
+      })
+    } else if (tipoReporte === 'visitas') {
+      let totalRecaudado = 0
+      filasFiltradas.forEach(r => {
+        const valor = parseFloat(r.valor_transaccion) || 0
+        totalRecaudado += valor
+        mensaje += `🏢 *${r.nombre_cliente}*\n`
+        mensaje += `📋 Motivo: ${r.motivo}\n`
+        mensaje += `💰 Valor: $${valor.toFixed(2)}\n\n`
+      })
+      mensaje += `----------------------------------\n`
+      mensaje += `💵 *TOTAL RECAUDADO: $${totalRecaudado.toFixed(2)}*\n`
+      mensaje += `_(Comparar con depósitos bancarios)_`
+    } else if (tipoReporte === 'proximas') {
+      filasFiltradas.forEach(r => {
+        mensaje += `🗓 *${r.proxima_visita}*\n`
+        mensaje += `🏢 Cliente: ${r.nombre_cliente}\n`
+        mensaje += `👤 Vendedor: ${r.nombre_empleado}\n\n`
+      })
     }
-    window.open(encodeURI(csvContent));
+
+    const url = `https://wa.me/?text=${encodeURIComponent(mensaje)}`
+    window.open(url, '_blank')
   }
 
   const exportarPDF = () => {
-    try {
-      const doc = new jsPDF()
-      doc.setFontSize(16)
-      doc.text(`Reporte de ${tipoReporte.toUpperCase()}`, 14, 15)
-      doc.setFontSize(10)
-      doc.text(`Periodo: ${fechaDesde} a ${fechaHasta}`, 14, 22)
+    const doc = jsPDF()
+    doc.text(`Reporte de ${tipoReporte}`, 14, 15)
+    
+    const body = filasFiltradas.map(r => {
+      if (tipoReporte === 'asistencia') return [r.fecha, r.nombre_empleado, r.hora_ingreso, r.hora_salida]
+      return [r.fecha, r.nombre_empleado, r.nombre_cliente, r.motivo, r.valor_transaccion, r.proxima_visita]
+    })
 
-      let headers, data;
-      if (tipoReporte === 'asistencia') {
-        headers = [["Empleado", "Fecha", "Entrada", "Salida", "Horas"]];
-        data = filasFiltradas.map(r => [r.nombre, r.fecha, r.entrada?.hora || '', r.salida?.hora || '', r.horas]);
-      } else if (tipoReporte === 'visitas') {
-        headers = [["Vendedor", "Cliente", "Motivo", "Monto", "Fecha"]];
-        data = filasFiltradas.map(r => [r.nombre_vendedor, r.nombre_cliente, r.motivo, `$${r.valor_transaccion}`, r.fecha]);
-      } else {
-        headers = [["Vendedor", "Cliente", "Motivo", "Prox. Visita", "Observaciones"]];
-        data = filasFiltradas.map(r => [r.nombre_vendedor, r.nombre_cliente, r.motivo, r.proxima_visita, r.observaciones]);
-      }
+    const head = tipoReporte === 'asistencia' 
+      ? [['Fecha', 'Empleado', 'Ingreso', 'Salida']]
+      : [['Fecha', 'Vendedor', 'Cliente', 'Motivo', 'Valor', 'Próx. Visita']]
 
-      autoTable(doc, { 
-        head: headers, 
-        body: data, 
-        startY: 30,
-        theme: 'grid',
-        headStyles: { fillColor: [30, 41, 59] }
-      })
-
-      doc.save(`Reporte_${tipoReporte}.pdf`)
-    } catch (error) {
-      alert("Error al generar PDF");
-    }
+    autoTable(doc, { head, body, startY: 20 })
+    doc.save(`reporte_${tipoReporte}.pdf`)
   }
 
-  const abrirMapa = (gps: any) => {
-    if (!gps) return alert("Sin ubicación")
-    const coords = gps.toString().replace(/[() ]/g, '')
-    window.open(`https://www.google.com/maps?q=${coords}`, '_blank')
+  const abrirMapa = (coords: string) => {
+    if (!coords) return
+    const cleanCoords = coords.replace(/[()]/g, '')
+    window.open(`https://www.google.com/maps?q=${cleanCoords}`, '_blank')
   }
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans">
       <AdminNav />
-      <main className="p-4 md:p-8 max-w-7xl mx-auto">
-        <div className="flex flex-col gap-6 bg-slate-900/50 p-6 rounded-3xl border border-white/5 mb-8 shadow-2xl">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <h1 className="text-xl font-black italic uppercase tracking-tighter">Panel Administrativo</h1>
-            <select 
-              value={tipoReporte}
-              onChange={(e) => { setTipoReporte(e.target.value); setFiltroCliente(''); setFiltroEmpleado(''); }}
-              className="bg-slate-800 text-emerald-400 border-none rounded-xl p-3 text-sm font-black outline-none w-full md:w-72"
-            >
-              <option value="asistencia">📋 REPORTE ASISTENCIA</option>
-              <option value="visitas">💼 GESTIÓN DE VISITAS</option>
-              <option value="proximas">⏳ AGENDA PRÓXIMAS VISITAS</option>
-            </select>
+      <main className="p-4 lg:p-8 pt-24">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/5 p-6 rounded-[30px] border border-white/10">
+            <div>
+              <h1 className="text-3xl font-black italic uppercase tracking-tighter">Reportes</h1>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Panel de Control Operativo</p>
+            </div>
+            
+            <div className="flex flex-wrap gap-2">
+              <button 
+                onClick={enviarWhatsApp}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase px-6 py-3 rounded-2xl transition-all flex items-center gap-2"
+              >
+                <span>WhatsApp</span>
+              </button>
+              <button 
+                onClick={exportarPDF}
+                className="bg-white/10 hover:bg-white/20 text-white text-[10px] font-black uppercase px-6 py-3 rounded-2xl transition-all"
+              >
+                PDF
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Desde</p>
-              <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Hasta</p>
-              <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Empleado</p>
-              <select value={filtroEmpleado} onChange={e => setFiltroEmpleado(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold">
-                <option value="">TODOS</option>
-                {empleados.map(e => <option key={e.id} value={e.id}>{e.nombres}</option>)}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-white/5 p-6 rounded-[30px] border border-white/10">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase ml-2">Tipo de Reporte</label>
+              <select 
+                value={tipoReporte} 
+                onChange={(e) => setTipoReporte(e.target.value)}
+                className="w-full bg-slate-900 border border-white/10 rounded-2xl p-3 text-xs font-bold outline-none focus:border-amber-500"
+              >
+                <option value="asistencia">Asistencia Diaria</option>
+                <option value="visitas">Gestión de Visitas</option>
+                <option value="proximas">Agenda Próximas Visitas</option>
               </select>
             </div>
-            {tipoReporte !== 'asistencia' && (
-              <div>
-                <p className="text-[10px] font-bold text-slate-500 uppercase mb-1 ml-2">Cliente</p>
-                <select value={filtroCliente} onChange={e => setFiltroCliente(e.target.value)} className="w-full bg-slate-800 border-none rounded-xl p-2 text-xs font-bold">
-                  <option value="">TODOS</option>
-                  {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre_local || c.nombre_fiscal}</option>)}
-                </select>
-              </div>
-            )}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase ml-2">Desde</label>
+              <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="w-full bg-slate-900 border border-white/10 rounded-2xl p-3 text-xs font-bold" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase ml-2">Hasta</label>
+              <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="w-full bg-slate-900 border border-white/10 rounded-2xl p-3 text-xs font-bold" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase ml-2">Filtro Empleado</label>
+              <select value={filtroEmpleado} onChange={(e) => setFiltroEmpleado(e.target.value)} className="w-full bg-slate-900 border border-white/10 rounded-2xl p-3 text-xs font-bold">
+                <option value="">Todos los empleados</option>
+                {empleados.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+              </select>
+            </div>
           </div>
 
-          <div className="flex gap-2 justify-end">
-            <button onClick={exportarExcel} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-lg">Excel</button>
-            <button onClick={exportarPDF} className="bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-lg">PDF</button>
-          </div>
-        </div>
-
-        <div className="bg-slate-900 rounded-[35px] border border-white/5 overflow-hidden shadow-2xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[900px]">
+          <div className="bg-white/5 rounded-[40px] border border-white/10 overflow-hidden shadow-2xl">
+            <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-white/5 text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                  <th className="p-6">Identificación</th>
-                  <th className="p-6">{tipoReporte === 'asistencia' ? 'Ingreso' : 'Motivo / Fecha'}</th>
-                  {/* Ocultamos Monto si es reporte de próximas visitas */}
-                  {tipoReporte !== 'proximas' && (
-                    <th className="p-6">{tipoReporte === 'asistencia' ? 'Salida' : 'Monto'}</th>
-                  )}
-                  <th className="p-6">{tipoReporte === 'asistencia' ? 'Jornada' : 'Observaciones / Agenda'}</th>
-                  {tipoReporte !== 'asistencia' && <th className="p-6 text-center">Evidencia</th>}
+                <tr className="bg-white/5 border-b border-white/10">
+                  <th className="p-6 text-[10px] font-black uppercase text-slate-500">Detalles del Registro</th>
+                  {tipoReporte !== 'asistencia' && <th className="p-6 text-center text-[10px] font-black uppercase text-slate-500">Multimedia</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filasFiltradas.map((r: any, idx) => (
-                  <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
+                {filasFiltradas.map((r, i) => (
+                  <tr key={i} className="hover:bg-white/[0.02] transition-colors">
                     <td className="p-6">
-                      <p className="font-black text-white italic text-base leading-tight">
-                        {tipoReporte === 'asistencia' ? r.nombre : r.nombre_cliente}
-                      </p>
-                      <p className="text-[10px] font-bold text-slate-500 uppercase">
-                        {tipoReporte === 'asistencia' ? r.fecha : `Vend: ${r.nombre_vendedor}`}
-                      </p>
-                    </td>
-                    <td className="p-6">
+                      <div className="flex items-center gap-4 mb-3">
+                        <span className="text-[10px] font-black bg-amber-500 text-black px-3 py-1 rounded-full uppercase italic">
+                          {r.fecha}
+                        </span>
+                        <span className="text-xs font-black uppercase tracking-tight text-slate-300">
+                          {r.nombre_empleado}
+                        </span>
+                      </div>
+                      
                       {tipoReporte === 'asistencia' ? (
-                        r.entrada ? (
-                          <div className="flex items-center gap-3">
-                            <img src={r.entrada.foto} className="w-10 h-10 rounded-lg object-cover border border-white/10" />
-                            <div>
-                              <p className="text-emerald-400 font-black text-lg">{r.entrada.hora}</p>
-                              <button onClick={() => abrirMapa(r.entrada.gps)} className="text-[8px] font-black text-slate-500 underline">GPS</button>
-                            </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-2xl">
+                            <p className="text-[8px] font-black text-emerald-500 uppercase">Ingreso</p>
+                            <p className="text-lg font-black text-emerald-400">{r.hora_ingreso || '--:--'}</p>
                           </div>
-                        ) : '--:--'
-                      ) : (
-                        <div>
-                          <span className="bg-slate-800 px-2 py-1 rounded text-[9px] font-black text-slate-300 uppercase">{r.motivo}</span>
-                          <p className="text-[9px] text-slate-600 mt-1 font-bold">{r.fecha}</p>
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Celda de Monto / Salida condicionada */}
-                    {tipoReporte !== 'proximas' && (
-                      <td className="p-6">
-                        {tipoReporte === 'asistencia' ? (
-                          r.salida ? (
-                            <div className="flex items-center gap-3">
-                              <img src={r.salida.foto} className="w-10 h-10 rounded-lg object-cover border border-white/10" />
-                              <div>
-                                <p className="text-rose-400 font-black text-lg">{r.salida.hora}</p>
-                                <button onClick={() => abrirMapa(r.salida.gps)} className="text-[8px] font-black text-slate-500 underline">GPS</button>
-                              </div>
-                            </div>
-                          ) : <span className="text-amber-500 font-black text-[9px] animate-pulse italic uppercase tracking-widest">En Turno</span>
-                        ) : (
-                          <p className="text-xl font-black text-white italic">${parseFloat(r.valor_transaccion || 0).toFixed(2)}</p>
-                        )}
-                      </td>
-                    )}
-
-                    <td className="p-6">
-                      {tipoReporte === 'asistencia' ? (
-                        <div className="inline-block bg-slate-950 px-5 py-2 rounded-2xl border border-white/5">
-                          <p className="text-xl font-black text-white">{r.horas}h</p>
+                          <div className="bg-rose-500/10 border border-rose-500/20 p-3 rounded-2xl">
+                            <p className="text-[8px] font-black text-rose-500 uppercase">Salida</p>
+                            <p className="text-lg font-black text-rose-400">{r.hora_salida || '--:--'}</p>
+                          </div>
                         </div>
                       ) : (
-                        <div className="space-y-1">
+                        <div className="space-y-2">
+                          <p className="text-lg font-black leading-tight">{r.nombre_cliente}</p>
+                          <div className="flex items-center gap-4">
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-tighter">
+                              <span className="text-amber-500">◆</span> {r.motivo}
+                            </p>
+                            {r.valor_transaccion > 0 && (
+                              <p className="text-sm font-black text-emerald-400 tracking-tighter">
+                                Recaudado: ${r.valor_transaccion}
+                              </p>
+                            )}
+                          </div>
                           <p className="text-[10px] text-slate-400 italic leading-tight max-w-[250px] break-words">
                             {r.observaciones ? `"${r.observaciones}"` : 'Sin observaciones'}
                           </p>
