@@ -22,6 +22,7 @@ export default function DashboardPage() {
         return
       }
 
+      // Consultamos el estado usando la fecha local de Ecuador
       const hoyEcuador = new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
       
       const { data: registros } = await supabase
@@ -99,20 +100,22 @@ export default function DashboardPage() {
         }
       }
 
-      // --- LÓGICA DE COMPENSACIÓN PARA SUPABASE (ECUADOR) ---
+      // --- LÓGICA DE FECHA Y HORA MANUAL (VENCE AL VALOR POR DEFECTO UTC) ---
       const ahora = new Date();
-      // Obtenemos el texto de la hora actual en Ecuador (ej. 12:50:00)
-      const horaEcuadorSucia = ahora.toLocaleString("sv-SE", { timeZone: "America/Guayaquil" }).replace(' ', 'T');
-      const fechaEcuador = horaEcuadorSucia.split('T')[0];
-
-      // TRUCO: Enviamos la hora local pero con etiqueta +00:00 para que la DB no la transforme
-      const fechaHoraCompensada = `${horaEcuadorSucia}+00:00`;
+      
+      // 1. Generamos la estampa de tiempo local de Ecuador (Formato ISO con -05:00)
+      const opciones = { timeZone: "America/Guayaquil", hour12: false };
+      const horaEcuadorSucia = ahora.toLocaleString("sv-SE", opciones).replace(' ', 'T');
+      const fechaHoraISO = `${horaEcuadorSucia}-05:00`;
+      
+      // 2. Extraemos la fecha limpia para la columna 'fecha'
+      const fechaSoloEcuador = horaEcuadorSucia.split('T')[0];
 
       const { error: dbError } = await supabase.from('asistencia').insert([{
         empleado_id: session.user.id,
         tipo_registro: tipo.toLowerCase(),
-        fecha_hora: fechaHoraCompensada, 
-        fecha: fechaEcuador,
+        fecha_hora: fechaHoraISO, // Forzamos la hora de Ecuador
+        fecha: fechaSoloEcuador,  // Forzamos la fecha de Ecuador
         geolocalizacion: coords,
         foto: fotoUrl
       }]);
@@ -132,7 +135,7 @@ export default function DashboardPage() {
   }
 
   if (loading && status === 'Iniciando...') {
-    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic">CARGANDO...</div>
+    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black italic uppercase">Cargando...</div>
   }
 
   return (
